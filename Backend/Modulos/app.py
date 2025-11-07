@@ -1,42 +1,56 @@
-# app.py
+# Backend/Modulos/app.py
 
-from Backend.Modulos.asignador import esta_conectado,asignar_espacio, leer_espacios, espacios_pendientes
+from fastapi import FastAPI
+from Backend.Modulos.asignador import (
+    esta_conectado,
+    asignar_espacio,
+    leer_espacios,
+    espacios_pendientes
+)
 from Backend.BaseDatos import bd
 from datetime import datetime
+from fastapi.middleware.cors import CORSMiddleware
 
-def registrar_acceso():
-    usuario_id = 1  # Simulado
-    espacio = asignar_espacio()
-    conectado = esta_conectado()
-    hora_entrada = datetime.now()
-    if espacio and conectado:
-        entrada = bd.insert_historial(usuario_id,espacio,hora_entrada)
-        return entrada
-    elif not espacio and conectado:
-        return {"mensaje": "No hay espacios disponibles"}
-    else:
-        return {"mensaje": "[ERROR] No hay conexion a Arduino"}
+app = FastAPI(title="API Estacionamiento")
 
-def verificar_ocupacion(espacio):
-    sensores = leer_espacios()
-    ocupado = sensores.get(espacio) == 0
-    if ocupado and espacio in espacios_pendientes:
-        espacios_pendientes.remove(espacio)
-    elif not ocupado and espacio in espacios_pendientes:
-        bd.cambiar_valido_historial(espacio)
-        espacios_pendientes.remove(espacio)
-    return {"ocupado": ocupado}
+# Permitir que el frontend Flet se comunique con este backend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # o pon tu IP/local si quieres limitarlo
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
+@app.get("/estado")
 def obtener_estado_espacios():
     sensores = leer_espacios()
-    return{
+    return {
         "sensores": sensores,
         "pendientes": list(espacios_pendientes)
     }
 
-def obtener_historial():
-    historial =  bd.get_historial()
-    return historial
+@app.post("/registrar")
+def registrar_acceso():
+    usuario_id = 1  # Simulado, luego puedes reemplazarlo con login real
+    espacio = asignar_espacio()
+    conectado = esta_conectado()
+    hora_entrada = datetime.now()
 
+    if espacio and conectado:
+        entrada = bd.insert_historial(usuario_id, espacio, hora_entrada)
+        return {"success": True, "data": entrada}
+    elif not espacio and conectado:
+        return {"success": False, "mensaje": "No hay espacios disponibles"}
+    else:
+        return {"success": False, "mensaje": "[ERROR] No hay conexión a Arduino"}
+
+@app.get("/historial")
+def obtener_historial():
+    historial = bd.get_historial()
+    return {"historial": historial}
+
+@app.delete("/historial")
 def borrar_historial():
     bd.purgar_historial()
+    return {"mensaje": "Historial purgado correctamente"}
