@@ -1,4 +1,5 @@
 import flet as ft
+import requests
 from pages.usuario_page import usuario_view
 from pages.vigilante_page import vigilante_view
 from pages.admin_page import admin_view
@@ -43,29 +44,38 @@ def main(page: ft.Page):
 
     mensaje = ft.Text("", color=ft.Colors.RED_700, size=13)
 
-    # --- Usuarios de prueba ---
-    USUARIOS = {
-        "usuario": {"password": "1234", "rol": "usuario"},
-        "vigilante": {"password": "abcd", "rol": "vigilante"},
-        "admin": {"password": "root", "rol": "admin"},
-    }
-
     # --- Funciones ---
     def login_click(e):
         usuario = usuario_input.value.strip()
         password = password_input.value.strip()
-        datos = USUARIOS.get(usuario)
-
-        if datos and password == datos["password"]:
-            rol = datos["rol"]
-            if rol == "usuario":
-                usuario_view(page, API_URL)
-            elif rol == "vigilante":
-                vigilante_view(page, API_URL)
-            elif rol == "admin":
-                admin_view(page, API_URL)
-        else:
-            mensaje.value = "Usuario o contraseña incorrectos."
+        
+        if not usuario or not password:
+            mensaje.value = "Por favor completa todos los campos"
+            page.update()
+            return
+        
+        try:
+            # Consultar el backend para autenticar
+            r = requests.post(
+                f"{API_URL}/login",
+                json={"usuario": usuario, "contrasena": password}
+            )
+            datos = r.json()
+            
+            if datos.get("autenticado"):
+                rol = datos.get("rol")
+                id_usuario = datos.get("id_usuario")
+                if rol == "usuario":
+                    usuario_view(page, API_URL, id_usuario)
+                elif rol == "vigilante":
+                    vigilante_view(page, API_URL)
+                elif rol == "admin":
+                    admin_view(page, API_URL)
+            else:
+                mensaje.value = "Usuario o contraseña incorrectos."
+                page.update()
+        except Exception as ex:
+            mensaje.value = f"Error de conexión: {ex}"
             page.update()
 
     boton_login = ft.ElevatedButton(

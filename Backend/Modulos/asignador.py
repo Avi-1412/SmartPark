@@ -5,7 +5,7 @@ import time
 import serial
 import threading
 
-etiquetas = ['A', 'B', 'C']
+etiquetas = ['A', 'B', 'C', 'D']
 grafo = {
     'Entrada': {'A': 1},
     'A': {'C': 3},
@@ -22,7 +22,7 @@ ERROR = "[ERROR]"
 #NOTA: Esta parte de código se debe adaptar para conexion wireless "POR VER"
 # Inicializa Arduino solo una vez
 try:
-    arduino = serial.Serial('COM10', 9600)
+    arduino = serial.Serial('COM3', 9600)
     time.sleep(2)
     arduino.reset_input_buffer()
 #Depuracion de conexion serial
