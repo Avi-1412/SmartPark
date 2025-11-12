@@ -9,6 +9,7 @@ from Backend.Modulos.asignador import (
 from Backend.BaseDatos import bd
 from datetime import datetime
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi import HTTPException
 
 app = FastAPI(title="API Estacionamiento")
 
@@ -62,6 +63,37 @@ def registrar_acceso():
     else:
         return {"success": False, "mensaje": "[ERROR] No hay conexión a Arduino"}
 
+@app.post("/registrar/rfid")
+def registrar_acceso_rfid(datos: dict = Body(...)):
+    """Registra entrada por RFID - recibe id_usuario del Arduino"""
+    id_usuario = datos.get("id_usuario")
+    
+    if not id_usuario:
+        return {"success": False, "mensaje": "❌ Falta id_usuario"}
+    
+    # Verificar que el usuario existe
+    usuario = bd.get_usuario(str(id_usuario))
+    if not usuario:
+        return {"success": False, "mensaje": f"❌ Usuario {id_usuario} no encontrado"}
+    
+    # Asignar espacio
+    espacio = asignar_espacio()
+    hora_entrada = datetime.now()
+    
+    if espacio:
+        # Registrar en historial
+        entrada = bd.insert_historial(id_usuario, espacio, hora_entrada)
+        print(f"✅ ENTRADA REGISTRADA: Usuario {id_usuario} → Espacio {espacio}")
+        return {
+            "success": True, 
+            "espacio": espacio,
+            "id_usuario": id_usuario,
+            "mensaje": f"✅ Espacio asignado: {espacio}"
+        }
+    else:
+        print(f"❌ No hay espacios disponibles para usuario {id_usuario}")
+        return {"success": False, "mensaje": "❌ No hay espacios disponibles"}
+
 @app.get("/historial")
 def obtener_historial():
     historial = bd.get_historial()
@@ -71,6 +103,33 @@ def obtener_historial():
 def borrar_historial():
     bd.purgar_historial()
     return {"mensaje": "Historial purgado correctamente"}
+
+@app.get("/historial/usuario/{user_id}")
+def obtener_historial_usuario(user_id: int):
+    """Obtener historial completo de un usuario (automático + manual)"""
+    historial = bd.get_historial_completo_usuario(user_id)
+    return {"historial": historial}
+
+@app.get("/historial/validar/{id_usuario}/{id_historial}")
+def validar_historial(id_usuario: int, id_historial: int):
+    """Valida si un ID de historial existe y pertenece al usuario"""
+    existe = bd.verificar_historial_usuario(id_usuario, id_historial)
+    if existe:
+        return {"valido": True, "mensaje": "✅ Entrada válida"}
+    else:
+        return {"valido": False, "mensaje": "❌ Entrada no encontrada para este usuario"}
+
+@app.get("/historial/usuario/{user_id}/ids")
+def obtener_ids_historial_usuario(user_id: int):
+    """Obtiene lista de IDs de historial disponibles para un usuario (solo automáticos)"""
+    conexion = bd.conectar()
+    cursor = conexion.cursor()
+    cursor.execute("SELECT idHis, espAsig, horaEntrada FROM historial WHERE idUsuario = ? ORDER BY idHis DESC", (user_id,))
+    rows = cursor.fetchall()
+    conexion.close()
+    
+    ids_historial = [{"id": row[0], "espacio": row[1], "fecha": str(row[2])[:10]} for row in rows]
+    return {"ids": ids_historial, "total": len(ids_historial)}
 
 # =====================================================
 # ENDPOINTS DE USUARIOS
@@ -132,6 +191,147 @@ def actualizar_usuario(usuario_id: str, datos: dict = Body(...)):
 def eliminar_usuario(usuario_id: str):
     """Eliminar un usuario y todos sus datos asociados (Administrador)"""
     return bd.delete_usuario(usuario_id)
+
+# =====================================================
+# ENDPOINTS ACCESOS MANUALES (tarjeta digital)
+# =====================================================
+
+@app.post("/acceso/manual/entrada")
+def registrar_entrada_manual(datos: dict = Body(...)):
+    """Registrar entrada manual (tarjeta digital) con límite mensual."""
+    id_usuario = datos.get("id_usuario")
+    if not id_usuario:
+        raise HTTPException(status_code=400, detail="Falta id_usuario")
+    # Validar límite mensual (3)
+    usos = bd.contar_accesos_manuales_mes(id_usuario)
+    if usos >= 3:
+        return {"success": False, "mensaje": "Límite de 3 accesos manuales alcanzado este mes"}
+    bd.registrar_acceso_manual(id_usuario, "entrada")
+    return {"success": True, "mensaje": f"Entrada manual registrada. Usos este mes: {usos+1}/3"}
+
+@app.post("/acceso/manual/salida")
+def registrar_salida_manual(datos: dict = Body(...)):
+    """Registrar salida manual (tarjeta digital). No tiene límite."""
+    id_usuario = datos.get("id_usuario")
+    if not id_usuario:
+        raise HTTPException(status_code=400, detail="Falta id_usuario")
+    bd.registrar_acceso_manual(id_usuario, "salida")
+    return {"success": True, "mensaje": "Salida manual registrada"}
+
+@app.get("/acceso/manuales/{id_usuario}")
+def obtener_historial_accesos_manuales(id_usuario: int):
+    """Obtener historial y conteo de accesos manuales del mes para un usuario."""
+    historial = bd.obtener_historial_accesos_manuales(id_usuario)
+    usos_mes = bd.contar_accesos_manuales_mes(id_usuario)
+    return {"historial": historial, "usos_mes": usos_mes, "limite": 3}
+
+@app.get("/acceso/manuales/{id_usuario}/activa")
+def verificar_entrada_activa(id_usuario: int):
+    """Verifica si hay una entrada manual sin salida correspondiente."""
+    hay_activa = bd.hay_entrada_activa(id_usuario)
+    return {"entrada_activa": hay_activa}
+
+# =====================================================
+# ENDPOINTS ADVERTENCIAS (vigilante)
+# =====================================================
+
+@app.post("/advertencias")
+def registrar_advertencia(datos: dict = Body(...)):
+    """Registra una advertencia para un usuario en una entrada específica."""
+    id_usuario = datos.get("id_usuario")
+    id_historial = datos.get("id_historial")
+    motivo = datos.get("motivo", "Mal estacionado")
+    
+    if not id_usuario or not id_historial:
+        return {"success": False, "mensaje": "Faltan datos (id_usuario, id_historial)"}
+    
+    try:
+        # Verificar que el ID de historial existe y pertenece al usuario
+        if not bd.verificar_historial_usuario(id_usuario, id_historial):
+            return {"success": False, "mensaje": "❌ ID de entrada no válido para este usuario"}
+        
+        # Verificar si ya hay 3 advertencias en esta entrada
+        count = bd.contar_advertencias_entrada(id_usuario, id_historial)
+        if count >= 3:
+            return {"success": False, "mensaje": "Límite de 3 advertencias alcanzado en esta entrada"}
+        
+        # Verificar bloqueo de 2 minutos
+        ultima_adv = bd.obtener_ultima_advertencia_entrada(id_usuario, id_historial)
+        if ultima_adv:
+            tiempo_transcurrido = (datetime.now() - datetime.fromisoformat(ultima_adv)).total_seconds() / 60
+            if tiempo_transcurrido < 2:
+                return {"success": False, "mensaje": f"Debe esperar 2 minutos entre advertencias ({int(2 - tiempo_transcurrido)} min restantes)"}
+        
+        result = bd.enviar_advertencia(id_usuario, id_historial, motivo)
+        new_count = bd.contar_advertencias_entrada(id_usuario, id_historial)
+        return {"success": True, "mensaje": f"Advertencia registrada ({new_count}/3)", "advertencias_entrada": new_count}
+    except Exception as e:
+        return {"success": False, "mensaje": f"Error al registrar: {str(e)}"}
+
+@app.get("/advertencias/{id_usuario}")
+def obtener_advertencias(id_usuario: int):
+    """Obtiene todas las advertencias de un usuario"""
+    advertencias = bd.obtener_advertencias_usuario(id_usuario)
+    total = bd.contar_advertencias_usuario(id_usuario)
+    return {"advertencias": advertencias, "total": total}
+
+@app.get("/advertencias/entrada/{id_usuario}/{id_historial}")
+def obtener_advertencias_entrada(id_usuario: int, id_historial: int):
+    """Obtiene advertencias de una entrada específica"""
+    count = bd.contar_advertencias_entrada(id_usuario, id_historial)
+    return {"id_usuario": id_usuario, "id_historial": id_historial, "advertencias": count}
+
+# =====================================================
+# ENDPOINTS MULTAS (vigilante/admin)
+# =====================================================
+
+@app.post("/multas")
+def registrar_multa(datos: dict = Body(...)):
+    """Registra una multa para un usuario (solo después de 3 advertencias)"""
+    id_usuario = datos.get("id_usuario")
+    id_historial = datos.get("id_historial")
+    concepto = datos.get("concepto", "Mal estacionado")
+    monto = datos.get("monto", 50.0)  # Monto por defecto
+    
+    if not id_usuario or not id_historial:
+        return {"success": False, "mensaje": "Faltan datos (id_usuario, id_historial)"}
+    
+    try:
+        # Verificar que el ID de historial existe y pertenece al usuario
+        if not bd.verificar_historial_usuario(id_usuario, id_historial):
+            return {"success": False, "mensaje": "❌ ID de entrada no válido para este usuario"}
+        
+        # Verificar que hay 3 advertencias en esta entrada
+        adv_count = bd.contar_advertencias_entrada(id_usuario, id_historial)
+        if adv_count < 3:
+            return {"success": False, "mensaje": f"Debe tener 3 advertencias para multa (actual: {adv_count})"}
+        
+        result = bd.enviar_multa(id_usuario, id_historial, concepto, monto)
+        return {"success": True, "mensaje": f"Multa de ${monto} registrada"}
+    except Exception as e:
+        return {"success": False, "mensaje": f"Error al registrar multa: {str(e)}"}
+
+@app.get("/multas/{id_usuario}")
+def obtener_multas(id_usuario: int):
+    """Obtiene todas las multas de un usuario"""
+    multas = bd.obtener_multas_usuario(id_usuario)
+    return {"multas": multas}
+
+@app.get("/multas")
+def obtener_todas_multas():
+    """Obtiene todas las multas del sistema (para admin/reportes)"""
+    multas = bd.obtener_todas_multas()
+    return {"multas": multas}
+
+@app.put("/multas/{id_multa}/pagada")
+def marcar_multa_pagada(id_multa: int, estado: dict = Body(...)):
+    """Marca una multa como pagada o no pagada (admin)"""
+    pagada = estado.get("pagada", False)
+    try:
+        result = bd.marcar_multa_pagada(id_multa, pagada)
+        return {"success": True, "mensaje": "Estado actualizado"}
+    except Exception as e:
+        return {"success": False, "mensaje": f"Error: {str(e)}"}
 
 # Inicializar BD (solo una vez)
 bd.inicializar_bd()

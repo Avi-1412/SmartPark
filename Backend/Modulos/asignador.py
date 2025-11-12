@@ -4,15 +4,18 @@ import heapq
 import time
 import serial
 import threading
+import copy
 
 etiquetas = ['A', 'B', 'C', 'D']
-grafo = {
+grafo_original = {
     'Entrada': {'A': 1},
     'A': {'C': 3},
     'B': {'A': 3},
     'C': {}
 }
-copia_grafo = grafo.copy()
+# Usar copia profunda para no modificar el original
+grafo = copy.deepcopy(grafo_original)
+copia_grafo = copy.deepcopy(grafo_original)
 espacios_pendientes = set()
 
 MESSAGE = "No hay conexion a Arduino"
@@ -21,14 +24,18 @@ ERROR = "[ERROR]"
 
 #NOTA: Esta parte de código se debe adaptar para conexion wireless "POR VER"
 # Inicializa Arduino solo una vez
-try:
-    arduino = serial.Serial('COM3', 9600)
-    time.sleep(2)
-    arduino.reset_input_buffer()
-#Depuracion de conexion serial
-except serial.SerialException as e:
-    print(f"{ERROR} No se pudo abrir el puerto COM10: {e}")
-    arduino = None
+# COMENTADO: El script Python (lector_rfid_backend.py) maneja la comunicación serial
+# try:
+#     arduino = serial.Serial('COM3', 9600)
+#     time.sleep(2)
+#     arduino.reset_input_buffer()
+# #Depuracion de conexion serial
+# except serial.SerialException as e:
+#     print(f"{ERROR} No se pudo abrir el puerto COM3: {e}")
+#     arduino = None
+
+# Usar None directamente para evitar conflicto con script Python
+arduino = None
 
 #Funcion anticrash
 def esta_conectado():
@@ -59,9 +66,11 @@ def verificar_ocupacion_real_diferida(espacio_objetivo, espera=10):
     threading.Thread(target=tarea).start()
 
 def leer_espacios(reintentos=10):
-    if not esta_conectado:
-        print(MESSAGE)
-        return {}
+    if not esta_conectado():
+        print(f"{INFO} Arduino no conectado - Usando sensores simulados")
+        # Retornar sensores simulados (todos libres: 1 = libre, 0 = ocupado)
+        return {'A': 1, 'B': 1, 'C': 1, 'D': 1}
+    
     #espacios = {}
     ultima_valida = None
     for _ in range(reintentos):
@@ -128,30 +137,51 @@ def esperar_desocupacion(espacio_objetivo):
 
 #Funcion principal que realiza todo el proceso
 def asignar_espacio():
-    global copia_grafo
-    if not esta_conectado():
-        print(f"{ERROR} No se puede asignar espacio: {MESSAGE}")
-        return None
+    global copia_grafo, grafo
+    
+    # Leer sensores (retorna simulados si no hay Arduino)
     sensores = leer_espacios()
     if not sensores:
-        print(f"{ERROR} No se pudieron leer sensores {MESSAGE}")
+        print(f"{INFO} No hay sensores disponibles")
         return None
+    
+    print(f"{INFO} Sensores: {sensores}")
+    print(f"{INFO} Espacios pendientes: {espacios_pendientes}")
+    
+    # Calcular distancias usando Dijkstra
     distancias = dijkstra(copia_grafo, 'Entrada')
+    print(f"{INFO} Distancias: {distancias}")
+    
     espacio_objetivo = encontrar_espacio_libre(distancias, sensores)
+    print(f"{INFO} Espacio seleccionado: {espacio_objetivo}")
 
     if espacio_objetivo:
         try:
-            arduino.write(espacio_objetivo.encode())
-            espacios_pendientes.add(espacio_objetivo)
-            print(f"Espacio pendiente: {espacios_pendientes}")
-            print(f"Asignado: {espacio_objetivo}")
-            #global copia_grafo
-            copia_grafo = simular_ocupacion(copia_grafo,espacio_objetivo)
-            verificar_ocupacion_real_diferida(espacio_objetivo)
+            # Si Arduino está conectado, enviar comando
+            if esta_conectado():
+                arduino.write(espacio_objetivo.encode())
+                espacios_pendientes.add(espacio_objetivo)
+                print(f"{INFO} Espacio pendiente: {espacios_pendientes}")
+            
+            print(f"✅ Asignado: {espacio_objetivo}")
+            
+            # Actualizar el grafo para la siguiente asignación
+            copia_grafo = simular_ocupacion(copia_grafo, espacio_objetivo)
+            print(f"{INFO} Grafo actualizado")
+            
+            if esta_conectado():
+                verificar_ocupacion_real_diferida(espacio_objetivo)
+            
             return espacio_objetivo
         except Exception as e:
-            print(f"{ERROR} Fallo al enviar datos al Arduino: {e}")
+            print(f"{ERROR} Fallo: {e}")
+            import traceback
+            traceback.print_exc()
             return None
     else:
-        print("{INFO} No hay espacios disponibles")
+        print(f"{INFO} No hay espacios libres")
+        # Resetear grafo si no hay espacios
+        copia_grafo = copy.deepcopy(grafo_original)
+        print(f"{INFO} Grafo reseteado")
+    
     return None

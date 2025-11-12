@@ -71,6 +71,85 @@ def purgar_historial():
     cursor.execute("DELETE FROM historial WHERE fechaHis < ?", (fecha_limite,))
     conexion.commit()
     conexion.close()
+
+def get_historial_por_usuario(user_id):
+    """Obtener historial de un usuario específico"""
+    conexion = conectar()
+    cursor = conexion.cursor()
+    cursor.execute("SELECT idHis, idUsuario, espAsig, fechaHis, valido, horaEntrada, horaSalida FROM historial WHERE idUsuario = ? ORDER BY idHis DESC", (user_id,))
+    resultados = cursor.fetchall()
+    cursor.close()
+    conexion.close()
+
+    historial = []
+    for fila in resultados:
+        historial.append({
+            "historial_id": fila[0],
+            "usuario_id": fila[1],
+            "espacio_asignado": fila[2],
+            "fecha_entrada": fila[3],
+            "valido": fila[4],
+            "hora_entrada": fila[5],
+            "hora_salida": fila[6],
+            "tipo": "automatico"
+        })
+    return historial
+
+def get_historial_completo_usuario(user_id):
+    """Obtener historial completo de un usuario (automático + manual)"""
+    conexion = conectar()
+    cursor = conexion.cursor()
+    
+    # Obtener historial automático
+    cursor.execute("SELECT idHis, idUsuario, espAsig, fechaHis, valido, horaEntrada, horaSalida FROM historial WHERE idUsuario = ? ORDER BY idHis DESC", (user_id,))
+    resultados_auto = cursor.fetchall()
+    
+    # Obtener accesos manuales
+    cursor.execute("SELECT id, id_usuario, fecha, tipo FROM accesos_manuales WHERE id_usuario = ? ORDER BY id DESC", (user_id,))
+    resultados_manuales = cursor.fetchall()
+    
+    cursor.close()
+    conexion.close()
+
+    historial = []
+    
+    # Procesar historial automático
+    for fila in resultados_auto:
+        historial.append({
+            "historial_id": fila[0],
+            "usuario_id": fila[1],
+            "espacio_asignado": fila[2],
+            "fecha_entrada": fila[3],
+            "valido": fila[4],
+            "hora_entrada": fila[5],
+            "hora_salida": fila[6],
+            "tipo": "automático",
+            "ordenar_por": fila[5]  # horaEntrada para ordenar
+        })
+    
+    # Procesar accesos manuales
+    for fila in resultados_manuales:
+        historial.append({
+            "historial_id": fila[0],
+            "usuario_id": fila[1],
+            "espacio_asignado": f"Manual ({fila[3].upper()})",
+            "fecha_entrada": fila[2],
+            "valido": 1,  # Los accesos manuales siempre son válidos
+            "hora_entrada": fila[2],
+            "hora_salida": None,
+            "tipo": "manual",
+            "ordenar_por": fila[2]  # fecha para ordenar
+        })
+    
+    # Ordenar por fecha descendente (más recientes primero)
+    historial.sort(key=lambda x: x.get("ordenar_por", ""), reverse=True)
+    
+    # Remover la clave de ordenamiento
+    for item in historial:
+        del item["ordenar_por"]
+    
+    return historial
+
 # =====================================================
 # FUNCIONES PARA REGISTRO DE USUARIOS
 # =====================================================
@@ -116,9 +195,256 @@ def inicializar_bd():
     )
     """)
     
+    # Tabla de historial
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS historial (
+        idHis INTEGER PRIMARY KEY AUTOINCREMENT,
+        idUsuario INTEGER,
+        espAsig TEXT,
+        fechaHis DATETIME,
+        valido INTEGER DEFAULT 1,
+        horaEntrada DATETIME,
+        horaSalida DATETIME,
+        FOREIGN KEY (idUsuario) REFERENCES usuarios(idUsuario) ON DELETE CASCADE
+    )
+    """)
+    
+    # Tabla de accesos manuales
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS accesos_manuales (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id_usuario INTEGER,
+        fecha DATETIME,
+        tipo TEXT,
+        FOREIGN KEY (id_usuario) REFERENCES usuarios(idUsuario) ON DELETE CASCADE
+    )
+    """)
+    # Tabla de advertencias (vinculadas a entrada en historial)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS advertencias (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id_usuario INTEGER,
+        id_historial INTEGER,
+        fecha DATETIME,
+        motivo TEXT,
+        FOREIGN KEY (id_usuario) REFERENCES usuarios(idUsuario) ON DELETE CASCADE,
+        FOREIGN KEY (id_historial) REFERENCES historial(idHis) ON DELETE CASCADE
+    )
+    """)
+    # Tabla de multas (vinculadas a entrada y concepto)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS multas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id_usuario INTEGER,
+        id_historial INTEGER,
+        fecha DATETIME,
+        concepto TEXT,
+        monto REAL,
+        pagado INTEGER DEFAULT 0,
+        FOREIGN KEY (id_usuario) REFERENCES usuarios(idUsuario) ON DELETE CASCADE,
+        FOREIGN KEY (id_historial) REFERENCES historial(idHis) ON DELETE CASCADE
+    )
+    """)
+    
     conexion.commit()
     conexion.close()
 
+# ===============================
+# ACCESOS MANUALES (tarjeta digital)
+# ===============================
+def registrar_acceso_manual(id_usuario, tipo):
+    """Registra un acceso manual (entrada o salida) para un usuario."""
+    conexion = conectar()
+    cursor = conexion.cursor()
+    fecha = datetime.now()
+    cursor.execute("""
+        INSERT INTO accesos_manuales (id_usuario, fecha, tipo)
+        VALUES (?, ?, ?)
+    """, (id_usuario, fecha, tipo))
+    conexion.commit()
+    conexion.close()
+    return {"mensaje": f"Acceso manual '{tipo}' registrado para usuario {id_usuario}"}
+
+def contar_accesos_manuales_mes(id_usuario):
+    """Cuenta los accesos manuales de ENTRADA de un usuario en el mes actual."""
+    conexion = conectar()
+    cursor = conexion.cursor()
+    inicio_mes = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    cursor.execute("""
+        SELECT COUNT(*) FROM accesos_manuales
+        WHERE id_usuario = ? AND tipo = 'entrada' AND fecha >= ?
+    """, (id_usuario, inicio_mes))
+    count = cursor.fetchone()[0]
+    conexion.close()
+    return count
+
+def obtener_historial_accesos_manuales(id_usuario):
+    """Devuelve el historial de accesos manuales de un usuario."""
+    conexion = conectar()
+    cursor = conexion.cursor()
+    cursor.execute("""
+        SELECT fecha, tipo FROM accesos_manuales
+        WHERE id_usuario = ?
+        ORDER BY fecha DESC
+    """, (id_usuario,))
+    rows = cursor.fetchall()
+    conexion.close()
+    return [{"fecha": r[0], "tipo": r[1]} for r in rows]
+
+def hay_entrada_activa(id_usuario):
+    """Verifica si hay una entrada manual sin salida correspondiente (entrada activa)."""
+    conexion = conectar()
+    cursor = conexion.cursor()
+    
+    # Obtener el último acceso del usuario
+    cursor.execute("""
+        SELECT tipo, fecha FROM accesos_manuales
+        WHERE id_usuario = ?
+        ORDER BY fecha DESC
+        LIMIT 1
+    """, (id_usuario,))
+    
+    resultado = cursor.fetchone()
+    conexion.close()
+    
+    # Si no hay accesos, no hay entrada activa
+    if resultado is None:
+        return False
+    
+    # Si el último acceso es una entrada, hay entrada activa
+    # Si el último acceso es una salida, no hay entrada activa
+    ultimo_tipo = resultado[0]
+    return ultimo_tipo == "entrada"
+
+# ===============================
+# ADVERTENCIAS (vigilante)
+# ===============================
+def verificar_historial_usuario(id_usuario, id_historial):
+    """Verifica si un ID de historial existe y pertenece al usuario especificado"""
+    conexion = conectar()
+    cursor = conexion.cursor()
+    cursor.execute("""
+        SELECT idHis FROM historial 
+        WHERE idHis = ? AND idUsuario = ?
+    """, (id_historial, id_usuario))
+    resultado = cursor.fetchone()
+    conexion.close()
+    return resultado is not None
+
+def enviar_advertencia(id_usuario, id_historial, motivo="Mal estacionado"):
+    """Registra una advertencia para un usuario en una entrada específica."""
+    conexion = conectar()
+    cursor = conexion.cursor()
+    fecha = datetime.now()
+    cursor.execute("""
+        INSERT INTO advertencias (id_usuario, id_historial, fecha, motivo)
+        VALUES (?, ?, ?, ?)
+    """, (id_usuario, id_historial, fecha, motivo))
+    conexion.commit()
+    conexion.close()
+    return {"mensaje": f"Advertencia registrada para usuario {id_usuario}"}
+
+def contar_advertencias_entrada(id_usuario, id_historial):
+    """Cuenta advertencias en la entrada actual del usuario."""
+    conexion = conectar()
+    cursor = conexion.cursor()
+    cursor.execute("""
+        SELECT COUNT(*) FROM advertencias
+        WHERE id_usuario = ? AND id_historial = ?
+    """, (id_usuario, id_historial))
+    count = cursor.fetchone()[0]
+    conexion.close()
+    return count
+
+def obtener_ultima_advertencia_entrada(id_usuario, id_historial):
+    """Obtiene la fecha de la última advertencia de esta entrada."""
+    conexion = conectar()
+    cursor = conexion.cursor()
+    cursor.execute("""
+        SELECT fecha FROM advertencias
+        WHERE id_usuario = ? AND id_historial = ?
+        ORDER BY fecha DESC
+        LIMIT 1
+    """, (id_usuario, id_historial))
+    resultado = cursor.fetchone()
+    conexion.close()
+    return resultado[0] if resultado else None
+
+def obtener_advertencias_usuario(id_usuario):
+    """Obtiene todas las advertencias de un usuario (históricas)."""
+    conexion = conectar()
+    cursor = conexion.cursor()
+    cursor.execute("""
+        SELECT a.fecha, a.motivo, a.id_historial, h.fechaHis
+        FROM advertencias a
+        LEFT JOIN historial h ON a.id_historial = h.idHis
+        WHERE a.id_usuario = ?
+        ORDER BY a.fecha DESC
+    """, (id_usuario,))
+    rows = cursor.fetchall()
+    conexion.close()
+    return [{"fecha": r[0], "motivo": r[1], "id_historial": r[2], "fecha_entrada": r[3]} for r in rows]
+
+def contar_advertencias_usuario(id_usuario):
+    """Cuenta el total de advertencias de un usuario."""
+    conexion = conectar()
+    cursor = conexion.cursor()
+    cursor.execute("SELECT COUNT(*) FROM advertencias WHERE id_usuario = ?", (id_usuario,))
+    count = cursor.fetchone()[0]
+    conexion.close()
+    return count
+
+# ===============================
+# MULTAS (vigilante/admin)
+# ===============================
+def enviar_multa(id_usuario, id_historial, concepto, monto):
+    """Registra una multa para un usuario."""
+    conexion = conectar()
+    cursor = conexion.cursor()
+    fecha = datetime.now()
+    cursor.execute("""
+        INSERT INTO multas (id_usuario, id_historial, fecha, concepto, monto, pagado)
+        VALUES (?, ?, ?, ?, ?, 0)
+    """, (id_usuario, id_historial, fecha, concepto, monto))
+    conexion.commit()
+    conexion.close()
+    return {"mensaje": f"Multa registrada para usuario {id_usuario}"}
+
+def obtener_multas_usuario(id_usuario):
+    """Obtiene todas las multas de un usuario."""
+    conexion = conectar()
+    cursor = conexion.cursor()
+    cursor.execute("""
+        SELECT fecha, concepto, monto, pagado FROM multas
+        WHERE id_usuario = ?
+        ORDER BY fecha DESC
+    """, (id_usuario,))
+    rows = cursor.fetchall()
+    conexion.close()
+    return [{"fecha": r[0], "concepto": r[1], "monto": r[2], "pagado": r[3]} for r in rows]
+
+def obtener_todas_multas():
+    """Obtiene todas las multas del sistema (para admin)."""
+    conexion = conectar()
+    cursor = conexion.cursor()
+    cursor.execute("""
+        SELECT m.id, m.id_usuario, u.nomUsuario, m.fecha, m.concepto, m.monto, m.pagado
+        FROM multas m
+        LEFT JOIN usuarios u ON m.id_usuario = u.idUsuario
+        ORDER BY m.fecha DESC
+    """)
+    rows = cursor.fetchall()
+    conexion.close()
+    return [{"id": r[0], "id_usuario": r[1], "usuario": r[2], "fecha": r[3], "concepto": r[4], "monto": r[5], "pagado": r[6]} for r in rows]
+
+def marcar_multa_pagada(id_multa, pagada):
+    """Marca una multa como pagada o no (admin)."""
+    conexion = conectar()
+    cursor = conexion.cursor()
+    cursor.execute("UPDATE multas SET pagado = ? WHERE id = ?", (1 if pagada else 0, id_multa))
+    conexion.commit()
+    conexion.close()
+    return {"mensaje": "Estado de multa actualizado"}
 
 def generar_id(tipo_usuario):
     """

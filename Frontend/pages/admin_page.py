@@ -594,12 +594,63 @@ def admin_view(page: ft.Page, API_URL: str):
         dialog.open = True
         page.update()
 
+    def ver_reportes(e):
+        """Muestra advertencias y multas del sistema"""
+        salida.value = ""
+        page.update()
 
+        try:
+            # Obtener todas las multas
+            r = requests.get(f"{API_URL}/multas")
+            multas_data = r.json().get("multas", [])
+            
+            if not multas_data:
+                salida.value = "No hay multas registradas."
+                page.update()
+                return
+            
+            # Crear tabla de multas
+            tabla = ft.DataTable(
+                columns=[
+                    ft.DataColumn(ft.Text("Usuario ID")),
+                    ft.DataColumn(ft.Text("Nombre")),
+                    ft.DataColumn(ft.Text("Fecha")),
+                    ft.DataColumn(ft.Text("Concepto")),
+                    ft.DataColumn(ft.Text("Monto")),
+                    ft.DataColumn(ft.Text("Pagado")),
+                ],
+                rows=[],
+            )
+            
+            for multa in multas_data:
+                estado = "✅ SÍ" if multa.get("pagado") else "❌ NO"
+                tabla.rows.append(
+                    ft.DataRow(
+                        cells=[
+                            ft.DataCell(ft.Text(str(multa.get("id_usuario", "")))),
+                            ft.DataCell(ft.Text(multa.get("usuario", ""))),
+                            ft.DataCell(ft.Text(str(multa.get("fecha", ""))[:10])),
+                            ft.DataCell(ft.Text(multa.get("concepto", ""))),
+                            ft.DataCell(ft.Text(f"${multa.get('monto', 0)}")),
+                            ft.DataCell(ft.Text(estado)),
+                        ]
+                    )
+                )
+            
+            salida.value = ft.Column([
+                ft.Text("REPORTES - MULTAS DEL SISTEMA", size=14, weight=ft.FontWeight.BOLD),
+                tabla
+            ], scroll=ft.ScrollMode.AUTO)
+            page.update()
+            
+        except Exception as ex:
+            salida.value = f"Error: {ex}"
+            page.update()
 
     botones = [
-        ft.ElevatedButton("VER/MODIFICAR DATOS DE USUARIOS", on_click=ver_datos, bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, width=260, height=45),
+        ft.ElevatedButton("VER/MODIFICAR DATOS DE USUARIO", on_click=ver_datos, bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, width=260, height=45),
         ft.ElevatedButton("REGISTRAR USUARIOS", on_click=registrar_usuario, bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, width=260, height=45),
-        ft.ElevatedButton("VER REPORTES", on_click=placeholder, bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, width=260, height=45),
+        ft.ElevatedButton("VER REPORTES", on_click=ver_reportes, bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, width=260, height=45),
         ft.ElevatedButton("AJUSTES DE APLICACION", on_click=placeholder, bgcolor=ft.Colors.BLUE_GREY_700, color=ft.Colors.WHITE, width=260, height=45),
         ft.ElevatedButton("CERRAR APLICACION", on_click=cerrar_aplicacion, bgcolor=ft.Colors.RED_700, color=ft.Colors.WHITE, width=260, height=45),
     ]
