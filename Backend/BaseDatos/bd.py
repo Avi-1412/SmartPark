@@ -843,3 +843,116 @@ def crear_login_para_usuario(usuario_login, contrasena, rol, id_usuario):
     except Exception as e:
         conexion.close()
         return {"error": f"Error al crear credenciales: {str(e)}"}
+
+# =====================================================
+# NUEVAS FUNCIONES PARA VIGILANTE Y CONTROL DE ACCESO
+# =====================================================
+
+def get_accesos_recientes(limite=10):
+    """Obtiene los últimos accesos registrados con información del usuario"""
+    conexion = conectar()
+    cursor = conexion.cursor()
+    
+    # Obtener historial reciente con información de usuario
+    cursor.execute("""
+        SELECT 
+            h.idHis,
+            h.idUsuario,
+            u.nomUsuario,
+            u.celular,
+            h.espAsig,
+            h.fechaHis,
+            h.valido
+        FROM historial h
+        JOIN usuarios u ON h.idUsuario = u.idUsuario
+        ORDER BY h.idHis DESC
+        LIMIT ?
+    """, (limite,))
+    
+    resultados = cursor.fetchall()
+    cursor.close()
+    conexion.close()
+    
+    accesos = []
+    for fila in resultados:
+        accesos.append({
+            "historial_id": fila[0],
+            "usuario_id": fila[1],
+            "nombre_usuario": fila[2],
+            "celular": fila[3],
+            "espacio_asignado": fila[4],
+            "fecha_hora_entrada": fila[5],
+            "activo": fila[6]  # 1 = acceso activo, 0 = cerrado
+        })
+    
+    return accesos
+
+def verificar_acceso_activo(id_usuario):
+    """Verifica si el usuario tiene un acceso activo sin salida"""
+    conexion = conectar()
+    cursor = conexion.cursor()
+    
+    # Buscar el último acceso del usuario que esté activo (valido = 1)
+    cursor.execute("""
+        SELECT idHis, espAsig, fechaHis
+        FROM historial
+        WHERE idUsuario = ? AND valido = 1
+        ORDER BY idHis DESC
+        LIMIT 1
+    """, (id_usuario,))
+    
+    resultado = cursor.fetchone()
+    cursor.close()
+    conexion.close()
+    
+    if resultado:
+        return {
+            "tiene_acceso_activo": True,
+            "historial_id": resultado[0],
+            "espacio_asignado": resultado[1],
+            "fecha_entrada": resultado[2]
+        }
+    else:
+        return {"tiene_acceso_activo": False}
+
+def cerrar_acceso(id_usuario):
+    """Marca el último acceso activo del usuario como cerrado"""
+    conexion = conectar()
+    cursor = conexion.cursor()
+    
+    try:
+        # Actualizar el último acceso activo a valido = 0 (cerrado)
+        cursor.execute("""
+            UPDATE historial
+            SET valido = 0
+            WHERE idUsuario = ? AND valido = 1
+            ORDER BY idHis DESC
+            LIMIT 1
+        """, (id_usuario,))
+        
+        conexion.commit()
+        
+        # Obtener el registro actualizado
+        cursor.execute("""
+            SELECT idHis, espAsig, fechaHis
+            FROM historial
+            WHERE idUsuario = ?
+            ORDER BY idHis DESC
+            LIMIT 1
+        """, (id_usuario,))
+        
+        resultado = cursor.fetchone()
+        cursor.close()
+        conexion.close()
+        
+        return {
+            "exito": True,
+            "mensaje": f"Acceso cerrado para usuario {id_usuario}",
+            "historial_id": resultado[0] if resultado else None
+        }
+    except Exception as e:
+        conexion.close()
+        return {
+            "exito": False,
+            "mensaje": f"Error al cerrar acceso: {str(e)}"
+        }

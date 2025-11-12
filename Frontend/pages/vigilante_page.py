@@ -756,6 +756,115 @@ def vigilante_view(page: ft.Page, API_URL: str):
         dialog.open = True
         page.update()
 
+    def ver_accesos_recientes(e):
+        """Ver los últimos accesos registrados en tiempo real"""
+        page.clean()
+        
+        titulo_accesos = ft.Text("Accesos Recientes", size=24, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_900)
+        contenedor_accesos = ft.Column([], scroll=ft.ScrollMode.AUTO)
+        btn_refrescar = ft.ElevatedButton("🔄 REFRESCAR", bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, width=250, height=40)
+        
+        def cargar_accesos():
+            """Carga los accesos recientes desde el API"""
+            try:
+                r = requests.get(f"{API_URL}/accesos-recientes?limite=15")
+                if r.status_code == 200:
+                    accesos = r.json().get("accesos", [])
+                    contenedor_accesos.controls.clear()
+                    
+                    if not accesos:
+                        contenedor_accesos.controls.append(
+                            ft.Text("No hay accesos registrados", size=14, color=ft.Colors.BLUE_GREY_700)
+                        )
+                    else:
+                        for acceso in accesos:
+                            estado = "🔵 ACTIVO" if acceso.get("activo") == 1 else "✅ CERRADO"
+                            color_estado = ft.Colors.BLUE_600 if acceso.get("activo") == 1 else ft.Colors.GREEN_700
+                            
+                            tarjeta = ft.Container(
+                                content=ft.Column([
+                                    ft.Row([
+                                        ft.Text(f"👤 {acceso.get('nombre_usuario')}", weight=ft.FontWeight.BOLD, size=13),
+                                        ft.Text(f"ID: {acceso.get('usuario_id')}", size=11, color=ft.Colors.BLUE_GREY_700),
+                                    ]),
+                                    ft.Row([
+                                        ft.Text(f"🅿️ Espacio: {acceso.get('espacio_asignado')}", size=12, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_900),
+                                        ft.Text(estado, size=11, color=color_estado, weight=ft.FontWeight.BOLD),
+                                    ]),
+                                    ft.Row([
+                                        ft.Text(f"📞 {acceso.get('celular')}", size=10, color=ft.Colors.BLUE_GREY_600),
+                                        ft.Text(f"⏰ {str(acceso.get('fecha_hora_entrada', ''))[:19]}", size=10, color=ft.Colors.BLUE_GREY_600),
+                                    ]),
+                                    ft.Divider(height=1, color=ft.Colors.BLUE_GREY_200),
+                                ], spacing=5),
+                                padding=12,
+                                bgcolor=ft.Colors.BLUE_GREY_50,
+                                border_radius=6,
+                                border=ft.border.all(1, ft.Colors.BLUE_GREY_300),
+                            )
+                            contenedor_accesos.controls.append(tarjeta)
+                    
+                    page.update()
+                else:
+                    contenedor_accesos.controls.clear()
+                    contenedor_accesos.controls.append(
+                        ft.Text(f"Error al cargar: {r.status_code}", color=ft.Colors.RED_700)
+                    )
+                    page.update()
+            except Exception as ex:
+                contenedor_accesos.controls.clear()
+                contenedor_accesos.controls.append(
+                    ft.Text(f"❌ Error: {str(ex)}", color=ft.Colors.RED_700)
+                )
+                page.update()
+        
+        def refrescar_click(e):
+            cargar_accesos()
+        
+        btn_refrescar.on_click = refrescar_click
+        
+        # Cargar accesos al abrir
+        cargar_accesos()
+        
+        # Panel con actualización automática cada 2 segundos
+        panel_accesos = ft.Container(
+            content=ft.Column([
+                titulo_accesos,
+                ft.Divider(height=10, color=ft.Colors.TRANSPARENT),
+                ft.Row([btn_refrescar], alignment=ft.MainAxisAlignment.CENTER),
+                ft.Divider(height=10, color=ft.Colors.TRANSPARENT),
+                ft.Container(
+                    content=contenedor_accesos,
+                    width=600,
+                    height=450,
+                    border_radius=6,
+                    border=ft.border.all(1, ft.Colors.BLUE_GREY_300),
+                ),
+                ft.Divider(height=10, color=ft.Colors.TRANSPARENT),
+                ft.ElevatedButton("← VOLVER AL PANEL", on_click=lambda _: vigilante_view(page, API_URL), bgcolor=ft.Colors.BLUE_GREY_700, color=ft.Colors.WHITE, width=250, height=40),
+            ], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+            padding=30,
+            bgcolor=ft.Colors.WHITE,
+            border_radius=6,
+            shadow=ft.BoxShadow(blur_radius=10, color=ft.Colors.BLUE_GREY_100),
+        )
+        
+        page.add(panel_accesos)
+        
+        # Actualizar cada 3 segundos
+        import threading
+        def auto_refresh():
+            import time
+            while page.overlay or True:
+                time.sleep(3)
+                try:
+                    if page.session.get("actualizar_accesos", True):
+                        cargar_accesos()
+                except:
+                    break
+        
+        threading.Thread(target=auto_refresh, daemon=True).start()
+
     # =====================================================
     # PANEL PRINCIPAL
     # =====================================================
@@ -764,6 +873,7 @@ def vigilante_view(page: ft.Page, API_URL: str):
     logo = ft.Text("SmartPark", size=32, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_900)
 
     botones = [
+        ft.ElevatedButton("👀 VER ACCESOS RECIENTES", on_click=ver_accesos_recientes, bgcolor=ft.Colors.GREEN_900, color=ft.Colors.WHITE, width=250, height=45),
         ft.ElevatedButton("VER DATOS DE USUARIOS", on_click=ver_datos_usuarios, bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, width=250, height=45),
         ft.ElevatedButton("REGISTRAR ENTRADA MANUAL", on_click=lambda e: registrar_acceso_manual("entrada"), bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, width=250, height=45),
         ft.ElevatedButton("REGISTRAR SALIDA MANUAL", on_click=lambda e: registrar_acceso_manual("salida"), bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, width=250, height=45),

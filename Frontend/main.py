@@ -1,5 +1,13 @@
 import flet as ft
 import requests
+import sys
+import os
+
+# Agregar la carpeta Backend al path de Python
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+#   uvicorn Backend.Modulos.app:app --reload
+#   python "c:\Users\52333\Downloads\SmartPark-main (1)\SmartPark-main\lector_rfid_backend.py"
+#   python reset_bd.py
 from pages.usuario_page import usuario_view
 from pages.vigilante_page import vigilante_view
 from pages.admin_page import admin_view

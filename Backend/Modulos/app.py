@@ -71,10 +71,25 @@ def registrar_acceso_rfid(datos: dict = Body(...)):
     if not id_usuario:
         return {"success": False, "mensaje": "❌ Falta id_usuario"}
     
-    # Verificar que el usuario existe
+    # VALIDACIÓN: Verificar que el usuario existe
     usuario = bd.get_usuario(str(id_usuario))
-    if not usuario:
-        return {"success": False, "mensaje": f"❌ Usuario {id_usuario} no encontrado"}
+    if not usuario or usuario.get("error"):
+        return {
+            "success": False, 
+            "mensaje": f"❌ Usuario {id_usuario} no registrado en el sistema",
+            "codigo_error": "USUARIO_NO_EXISTE"
+        }
+    
+    # VALIDACIÓN: Verificar si el usuario ya tiene un acceso activo
+    acceso_activo = bd.verificar_acceso_activo(str(id_usuario))
+    if acceso_activo.get("tiene_acceso_activo"):
+        return {
+            "success": False,
+            "mensaje": f"❌ Usuario {id_usuario} ya tiene un acceso activo",
+            "espacio_activo": acceso_activo.get("espacio_asignado"),
+            "fecha_entrada": str(acceso_activo.get("fecha_entrada")),
+            "codigo_error": "ACCESO_ACTIVO_EXISTENTE"
+        }
     
     # Asignar espacio
     espacio = asignar_espacio()
@@ -83,21 +98,63 @@ def registrar_acceso_rfid(datos: dict = Body(...)):
     if espacio:
         # Registrar en historial
         entrada = bd.insert_historial(id_usuario, espacio, hora_entrada)
-        print(f"✅ ENTRADA REGISTRADA: Usuario {id_usuario} → Espacio {espacio}")
+        print(f"✅ ENTRADA REGISTRADA: Usuario {id_usuario} ({usuario.get('nomUsuario')}) → Espacio {espacio}")
         return {
             "success": True, 
             "espacio": espacio,
             "id_usuario": id_usuario,
-            "mensaje": f"✅ Espacio asignado: {espacio}"
+            "nombre_usuario": usuario.get("nomUsuario"),
+            "mensaje": f"✅ Espacio {espacio} asignado"
         }
     else:
         print(f"❌ No hay espacios disponibles para usuario {id_usuario}")
-        return {"success": False, "mensaje": "❌ No hay espacios disponibles"}
+        return {
+            "success": False, 
+            "mensaje": "❌ No hay espacios disponibles",
+            "codigo_error": "SIN_ESPACIOS"
+        }
 
 @app.get("/historial")
 def obtener_historial():
     historial = bd.get_historial()
     return {"historial": historial}
+
+@app.get("/accesos-recientes")
+def obtener_accesos_recientes(limite: int = 10):
+    """Obtiene los últimos accesos registrados (para panel vigilante)"""
+    accesos = bd.get_accesos_recientes(limite)
+    return {"accesos": accesos}
+
+@app.post("/registrar/salida")
+def registrar_salida(datos: dict = Body(...)):
+    """Registra salida de un usuario - cierra su acceso activo"""
+    id_usuario = datos.get("id_usuario")
+    
+    if not id_usuario:
+        return {"success": False, "mensaje": "❌ Falta id_usuario"}
+    
+    # Verificar que el usuario existe
+    usuario = bd.get_usuario(str(id_usuario))
+    if not usuario:
+        return {"success": False, "mensaje": f"❌ Usuario {id_usuario} no encontrado"}
+    
+    # Verificar si tiene acceso activo
+    acceso_activo = bd.verificar_acceso_activo(str(id_usuario))
+    if not acceso_activo.get("tiene_acceso_activo"):
+        return {"success": False, "mensaje": f"❌ Usuario {id_usuario} no tiene acceso activo"}
+    
+    # Cerrar el acceso
+    resultado = bd.cerrar_acceso(str(id_usuario))
+    
+    if resultado.get("exito"):
+        print(f"✅ SALIDA REGISTRADA: Usuario {id_usuario}")
+        return {
+            "success": True,
+            "mensaje": f"✅ Salida registrada para usuario {id_usuario}",
+            "espacio_liberado": acceso_activo.get("espacio_asignado")
+        }
+    else:
+        return {"success": False, "mensaje": resultado.get("mensaje", "Error desconocido")}
 
 @app.delete("/historial")
 def borrar_historial():

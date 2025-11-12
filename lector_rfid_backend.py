@@ -11,7 +11,7 @@ import time
 from datetime import datetime
 
 # CONFIGURACIÓN
-PUERTO_SERIAL = "COM3"
+PUERTO_SERIAL = "COM8"
 VELOCIDAD_BAUD = 9600
 BACKEND_URL = "http://127.0.0.1:8000/registrar/rfid"
 
@@ -52,6 +52,16 @@ def leer_tarjeta(puerto):
     except Exception as e:
         print(f"{Colores.AMARILLO}⚠ Error al leer: {e}{Colores.RESET}")
         return None
+
+def solicitar_estado_sensores(puerto):
+    """Envía comando 'S' al Arduino para solicitar estado de sensores"""
+    try:
+        print(f"{Colores.AZUL}→ Solicitando estado de sensores al Arduino...{Colores.RESET}")
+        puerto.write(b'S')
+        puerto.flush()
+        print(f"{Colores.VERDE}✓ Comando 'S' enviado{Colores.RESET}")
+    except Exception as e:
+        print(f"{Colores.ROJO}✗ Error al enviar comando 'S': {e}{Colores.RESET}")
 
 def enviar_al_backend(id_usuario):
     """Envía el ID usuario al backend"""
@@ -112,6 +122,9 @@ def main():
             
             if id_usuario is not None:
                 print(f"{Colores.AZUL}[{datetime.now().strftime('%H:%M:%S')}] Tarjeta detectada → ID: {id_usuario}{Colores.RESET}")
+                
+                # NUEVO: Solicitar estado de sensores cuando se detecta tarjeta
+                solicitar_estado_sensores(puerto)
                 
                 # Enviar al backend
                 enviar_al_backend(id_usuario)
