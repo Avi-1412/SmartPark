@@ -5,9 +5,18 @@ import os
 
 # Agregar la carpeta Backend al path de Python
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+# ====== COMANDOS RÁPIDOS (COPIAR Y PEGAR) ======
+# Backend (Terminal 1):
 #   uvicorn Backend.Modulos.app:app --reload
-#   python "c:\Users\52333\Downloads\SmartPark-main (1)\SmartPark-main\lector_rfid_backend.py"
+#
+# RFID Backend (Terminal 3):
+#   python c:\Users\Avi\Documents\GitHub\SmartPark\Scripts\lector_rfid_backend.py
+#
+# Reset BD:
 #   python reset_bd.py
+# ====================================================
+
 from pages.usuario_page import usuario_view
 from pages.vigilante_page import vigilante_view
 from pages.admin_page import admin_view
@@ -38,7 +47,7 @@ def main(page: ft.Page):
         label="Usuario",
         border_color=ft.Colors.BLUE_800,
         color=ft.Colors.BLUE_GREY_900,
-        width=260,
+        width=320,
     )
 
     password_input = ft.TextField(
@@ -47,7 +56,7 @@ def main(page: ft.Page):
         can_reveal_password=True,
         border_color=ft.Colors.BLUE_800,
         color=ft.Colors.BLUE_GREY_900,
-        width=260,
+        width=320,
     )
 
     mensaje = ft.Text("", color=ft.Colors.RED_700, size=13)
@@ -90,7 +99,7 @@ def main(page: ft.Page):
         text="Iniciar sesión",
         bgcolor=ft.Colors.BLUE_900,
         color=ft.Colors.WHITE,
-        width=180,
+        width=280,
         height=45,
         on_click=login_click,
     )
@@ -109,14 +118,19 @@ def main(page: ft.Page):
                 mensaje,
             ],
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+            spacing=10,
         ),
         padding=40,
-        width=400,
+        width=420,
         border_radius=8,
-        bgcolor=ft.Colors.WHITE,
+        bgcolor=ft.Colors.GREY_200,
         shadow=ft.BoxShadow(blur_radius=12, color=ft.Colors.BLUE_GREY_100),
     )
 
-    page.add(panel)
+    page.add(ft.Container(
+        content=panel,
+        alignment=ft.alignment.center,
+        expand=True,
+    ))
 
 ft.app(target=main)

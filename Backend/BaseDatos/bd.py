@@ -16,11 +16,11 @@ def insert_historial(id_usuario,esp_asig,fecha_his):
     except sql.DatabaseError as e:
         print(f"Error en la base de datos {e}")
     cursor = conexion.cursor()
-    sql = "INSERT INTO historial (idUsuario,espAsig,fechaHis) VALUES (?,?,?)"
-    datos = (id_usuario,esp_asig,fecha_his)
+    sql = "INSERT INTO historial (idUsuario,espAsig,fechaHis,horaEntrada) VALUES (?,?,?,?)"
+    datos = (id_usuario,esp_asig,fecha_his,fecha_his)
     cursor.execute(sql,datos)
     conexion.commit()
-    cursor.execute("SELECT idUsuario,espAsig,fechaHis,valido FROM historial ORDER BY idHis DESC LIMIT 1")
+    cursor.execute("SELECT idUsuario,espAsig,fechaHis,valido,horaEntrada FROM historial ORDER BY idHis DESC LIMIT 1")
     resultado = cursor.fetchone()
 
     if resultado is None:
@@ -34,7 +34,7 @@ def insert_historial(id_usuario,esp_asig,fecha_his):
     return {
         "usuario_id" : resultado[0],
         "espacio_asignado" : resultado[1],
-        "hora_entrada" : resultado[2],
+        "hora_entrada" : resultado[4],
     }
 
 def cambiar_valido_historial(espacio):
@@ -124,7 +124,7 @@ def get_historial_completo_usuario(user_id):
             "hora_entrada": fila[5],
             "hora_salida": fila[6],
             "tipo": "automático",
-            "ordenar_por": fila[5]  # horaEntrada para ordenar
+            "ordenar_por": fila[5] if fila[5] else ""  # horaEntrada para ordenar, vacío si es None
         })
     
     # Procesar accesos manuales
@@ -138,11 +138,12 @@ def get_historial_completo_usuario(user_id):
             "hora_entrada": fila[2],
             "hora_salida": None,
             "tipo": "manual",
-            "ordenar_por": fila[2]  # fecha para ordenar
+            "ordenar_por": fila[2] if fila[2] else ""  # fecha para ordenar, vacío si es None
         })
     
     # Ordenar por fecha descendente (más recientes primero)
-    historial.sort(key=lambda x: x.get("ordenar_por", ""), reverse=True)
+    # Usar tuple para manejar None values correctamente
+    historial.sort(key=lambda x: (x.get("ordenar_por") or "", ), reverse=True)
     
     # Remover la clave de ordenamiento
     for item in historial:
@@ -243,6 +244,30 @@ def inicializar_bd():
         pagado INTEGER DEFAULT 0,
         FOREIGN KEY (id_usuario) REFERENCES usuarios(idUsuario) ON DELETE CASCADE,
         FOREIGN KEY (id_historial) REFERENCES historial(idHis) ON DELETE CASCADE
+    )
+    """)
+    
+    # Tabla de alertas de sensores (ocupación ilegal)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS alertas_sensores (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        espacio TEXT,
+        estado INTEGER,
+        usuario_asignado INTEGER,
+        fecha DATETIME,
+        resuelta INTEGER DEFAULT 0,
+        FOREIGN KEY (usuario_asignado) REFERENCES usuarios(idUsuario) ON DELETE SET NULL
+    )
+    """)
+    
+    # Tabla de estado de sensores (último estado conocido)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS estado_sensores (
+        espacio TEXT PRIMARY KEY,
+        estado INTEGER,
+        ultima_actualizacion DATETIME,
+        usuario_asignado INTEGER,
+        FOREIGN KEY (usuario_asignado) REFERENCES usuarios(idUsuario) ON DELETE SET NULL
     )
     """)
     
@@ -917,38 +942,44 @@ def verificar_acceso_activo(id_usuario):
 
 def cerrar_acceso(id_usuario):
     """Marca el último acceso activo del usuario como cerrado"""
+    from datetime import datetime
     conexion = conectar()
     cursor = conexion.cursor()
     
     try:
-        # Actualizar el último acceso activo a valido = 0 (cerrado)
+        # Obtener el ID del último acceso activo
         cursor.execute("""
-            UPDATE historial
-            SET valido = 0
+            SELECT idHis, espAsig
+            FROM historial
             WHERE idUsuario = ? AND valido = 1
             ORDER BY idHis DESC
             LIMIT 1
         """, (id_usuario,))
         
-        conexion.commit()
-        
-        # Obtener el registro actualizado
-        cursor.execute("""
-            SELECT idHis, espAsig, fechaHis
-            FROM historial
-            WHERE idUsuario = ?
-            ORDER BY idHis DESC
-            LIMIT 1
-        """, (id_usuario,))
-        
         resultado = cursor.fetchone()
+        if not resultado:
+            cursor.close()
+            conexion.close()
+            return {"exito": False, "mensaje": "No hay acceso activo"}
+        
+        id_his, espacio = resultado
+        hora_salida = datetime.now()
+        
+        # Actualizar con horaSalida y marcar como cerrado
+        cursor.execute("""
+            UPDATE historial
+            SET valido = 0, horaSalida = ?
+            WHERE idHis = ?
+        """, (hora_salida, id_his))
+        
+        conexion.commit()
         cursor.close()
         conexion.close()
         
         return {
             "exito": True,
-            "mensaje": f"Acceso cerrado para usuario {id_usuario}",
-            "historial_id": resultado[0] if resultado else None
+            "mensaje": f"Acceso cerrado",
+            "espacio": espacio
         }
     except Exception as e:
         conexion.close()
@@ -956,3 +987,134 @@ def cerrar_acceso(id_usuario):
             "exito": False,
             "mensaje": f"Error al cerrar acceso: {str(e)}"
         }
+
+# ===============================
+# ALERTAS DE SENSORES (Ocupación Ilegal)
+# ===============================
+def actualizar_estado_sensores(datos_sensores):
+    """
+    Actualiza el estado de los sensores.
+    datos_sensores: dict con formato {'A': 1, 'B': 0, 'C': 1, 'D': 0}
+    1 = libre, 0 = ocupado
+    """
+    conexion = conectar()
+    cursor = conexion.cursor()
+    
+    for espacio, estado in datos_sensores.items():
+        # Obtener usuario asignado a este espacio
+        cursor.execute("""
+            SELECT idUsuario FROM historial 
+            WHERE espAsig = ? AND valido = 1
+            ORDER BY idHis DESC LIMIT 1
+        """, (espacio,))
+        resultado = cursor.fetchone()
+        usuario_asignado = resultado[0] if resultado else None
+        
+        # Actualizar estado
+        cursor.execute("""
+            INSERT OR REPLACE INTO estado_sensores (espacio, estado, ultima_actualizacion, usuario_asignado)
+            VALUES (?, ?, ?, ?)
+        """, (espacio, estado, datetime.now(), usuario_asignado))
+    
+    conexion.commit()
+    conexion.close()
+
+def detectar_ocupacion_ilegal():
+    """
+    Detecta espacios ocupados sin asignación de usuario.
+    Retorna lista de espacios con ocupación ilegal.
+    """
+    conexion = conectar()
+    cursor = conexion.cursor()
+    
+    # Obtener espacios ocupados (estado = 0)
+    cursor.execute("""
+        SELECT espacio, usuario_asignado FROM estado_sensores WHERE estado = 0
+    """)
+    espacios_ocupados = cursor.fetchall()
+    
+    ocupacion_ilegal = []
+    for espacio, usuario_asignado in espacios_ocupados:
+        if usuario_asignado is None:
+            ocupacion_ilegal.append(espacio)
+    
+    conexion.close()
+    return ocupacion_ilegal
+
+def crear_alerta_sensor(espacio, estado, usuario_asignado=None):
+    """
+    Crea una alerta de sensor (ocupación ilegal o cambio de estado).
+    """
+    conexion = conectar()
+    cursor = conexion.cursor()
+    
+    cursor.execute("""
+        INSERT INTO alertas_sensores (espacio, estado, usuario_asignado, fecha)
+        VALUES (?, ?, ?, ?)
+    """, (espacio, estado, usuario_asignado, datetime.now()))
+    
+    conexion.commit()
+    conexion.close()
+
+def obtener_alertas_sensor_pendientes():
+    """
+    Obtiene todas las alertas de sensores sin resolver.
+    """
+    conexion = conectar()
+    cursor = conexion.cursor()
+    
+    cursor.execute("""
+        SELECT id, espacio, estado, usuario_asignado, fecha 
+        FROM alertas_sensores 
+        WHERE resuelta = 0
+        ORDER BY fecha DESC
+    """)
+    resultados = cursor.fetchall()
+    conexion.close()
+    
+    alertas = []
+    for fila in resultados:
+        alertas.append({
+            "id": fila[0],
+            "espacio": fila[1],
+            "estado": fila[2],
+            "usuario_asignado": fila[3],
+            "fecha": str(fila[4])
+        })
+    
+    return alertas
+
+def resolver_alerta_sensor(alerta_id):
+    """
+    Marca una alerta como resuelta.
+    """
+    conexion = conectar()
+    cursor = conexion.cursor()
+    
+    cursor.execute("""
+        UPDATE alertas_sensores SET resuelta = 1 WHERE id = ?
+    """, (alerta_id,))
+    
+    conexion.commit()
+    conexion.close()
+
+def obtener_estado_espacios():
+    """
+    Obtiene el estado actual de todos los espacios.
+    Retorna dict con {'A': 1, 'B': 0, ...}
+    """
+    conexion = conectar()
+    cursor = conexion.cursor()
+    
+    cursor.execute("""
+        SELECT espacio, estado FROM estado_sensores ORDER BY espacio
+    """)
+    resultados = cursor.fetchall()
+    conexion.close()
+    
+    estado = {}
+    for espacio, est in resultados:
+        estado[espacio] = est
+    
+    return estado
+

@@ -178,6 +178,26 @@ def esperar_desocupacion(espacio_objetivo):
             return
         time.sleep(0.2)
 
+#Función para limpiar un espacio cuando se libera
+def liberar_espacio(espacio_a_liberar):
+    global copia_grafo, espacios_pendientes
+    
+    if espacio_a_liberar in espacios_pendientes:
+        espacios_pendientes.discard(espacio_a_liberar)
+        print(f"{INFO} Espacio {espacio_a_liberar} removido de pendientes")
+    
+    # Reconstruir el grafo: remover SOLO los espacios que están asignados actualmente
+    # (los que están en espacios_pendientes)
+    copia_grafo = copy.deepcopy(grafo_original)
+    
+    # Remover del grafo solo los espacios actualmente asignados
+    for espacio_asignado in espacios_pendientes:
+        copia_grafo = simular_ocupacion(copia_grafo, espacio_asignado)
+    
+    print(f"{INFO} Grafo reconstruido - removidos espacios asignados: {espacios_pendientes}")
+    print(f"{INFO} Espacios disponibles para asignar: {[nodo for nodo in grafo_original if nodo not in ['Entrada'] and nodo not in espacios_pendientes]}")
+    return True
+
 #Funcion principal que realiza todo el proceso
 def asignar_espacio():
     global copia_grafo, grafo

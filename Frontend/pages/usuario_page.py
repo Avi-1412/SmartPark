@@ -201,7 +201,7 @@ def usuario_view(page: ft.Page, API_URL: str, id_usuario: int = None):
                         padding=15,
                     ),
                 ]),
-                bgcolor=ft.Colors.WHITE,
+                bgcolor=ft.Colors.GREY_200,
                 border_radius=10,
                 shadow=ft.BoxShadow(blur_radius=15, color=ft.Colors.BLUE_GREY_300),
                 padding=0,
@@ -317,7 +317,7 @@ def usuario_view(page: ft.Page, API_URL: str, id_usuario: int = None):
         ),
         padding=40,
         width=420,
-        bgcolor=ft.Colors.WHITE,
+        bgcolor=ft.Colors.GREY_200,
         border_radius=6,
         shadow=ft.BoxShadow(blur_radius=10, color=ft.Colors.BLUE_GREY_100),
     )

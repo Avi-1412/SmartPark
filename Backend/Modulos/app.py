@@ -1,10 +1,12 @@
+# FastAPI Backend - Estacionamiento (Entrada COM3, Salida COM4)
+
 from fastapi import Body
 from fastapi import FastAPI
 from Backend.Modulos.asignador import (
-    esta_conectado,
     asignar_espacio,
     leer_espacios,
-    espacios_pendientes
+    espacios_pendientes,
+    liberar_espacio
 )
 from Backend.BaseDatos import bd
 from datetime import datetime
@@ -40,31 +42,8 @@ if count == 0:
     bd.seed_datos_iniciales()
     print("✅ Datos iniciales insertados")
 
-@app.get("/estado")
-def obtener_estado_espacios():
-    sensores = leer_espacios()
-    return {
-        "sensores": sensores,
-        "pendientes": list(espacios_pendientes)
-    }
-
-@app.post("/registrar")
-def registrar_acceso():
-    usuario_id = 1  # Simulado, luego puedes reemplazarlo con login real
-    espacio = asignar_espacio()
-    conectado = esta_conectado()
-    hora_entrada = datetime.now()
-
-    if espacio and conectado:
-        entrada = bd.insert_historial(usuario_id, espacio, hora_entrada)
-        return {"success": True, "data": entrada}
-    elif not espacio and conectado:
-        return {"success": False, "mensaje": "No hay espacios disponibles"}
-    else:
-        return {"success": False, "mensaje": "[ERROR] No hay conexión a Arduino"}
-
-@app.post("/registrar/rfid")
-def registrar_acceso_rfid(datos: dict = Body(...)):
+@app.post("/registrar/entrada")
+def registrar_entrada(datos: dict = Body(...)):
     """Registra entrada por RFID - recibe id_usuario del Arduino"""
     id_usuario = datos.get("id_usuario")
     
@@ -147,25 +126,26 @@ def registrar_salida(datos: dict = Body(...)):
     resultado = bd.cerrar_acceso(str(id_usuario))
     
     if resultado.get("exito"):
+        espacio_liberado = acceso_activo.get("espacio_asignado")
+        # Liberar el espacio y restaurar el grafo
+        liberar_espacio(espacio_liberado)
         print(f"✅ SALIDA REGISTRADA: Usuario {id_usuario}")
         return {
             "success": True,
             "mensaje": f"✅ Salida registrada para usuario {id_usuario}",
-            "espacio_liberado": acceso_activo.get("espacio_asignado")
+            "espacio_liberado": espacio_liberado
         }
     else:
         return {"success": False, "mensaje": resultado.get("mensaje", "Error desconocido")}
 
-@app.delete("/historial")
-def borrar_historial():
-    bd.purgar_historial()
-    return {"mensaje": "Historial purgado correctamente"}
-
 @app.get("/historial/usuario/{user_id}")
 def obtener_historial_usuario(user_id: int):
     """Obtener historial completo de un usuario (automático + manual)"""
-    historial = bd.get_historial_completo_usuario(user_id)
-    return {"historial": historial}
+    try:
+        historial = bd.get_historial_completo_usuario(user_id)
+        return {"historial": historial}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/historial/validar/{id_usuario}/{id_historial}")
 def validar_historial(id_usuario: int, id_historial: int):
@@ -390,5 +370,66 @@ def marcar_multa_pagada(id_multa: int, estado: dict = Body(...)):
     except Exception as e:
         return {"success": False, "mensaje": f"Error: {str(e)}"}
 
-# Inicializar BD (solo una vez)
-bd.inicializar_bd()
+# =====================================================
+# ENDPOINTS SENSORES (Arduino)
+# =====================================================
+
+@app.post("/sensores/actualizar")
+def actualizar_sensores(datos: dict = Body(...)):
+    """Recibe estado de sensores del Arduino y detecta ocupación ilegal"""
+    datos_sensores = datos.get("sensores")  # {'A': 1, 'B': 0, 'C': 1, 'D': 0}
+    
+    if not datos_sensores:
+        return {"success": False, "mensaje": "❌ Falta dato 'sensores'"}
+    
+    try:
+        # Actualizar estado en BD
+        bd.actualizar_estado_sensores(datos_sensores)
+        
+        # Detectar ocupación ilegal
+        ocupacion_ilegal = bd.detectar_ocupacion_ilegal()
+        
+        # Crear alertas para espacios ilegales
+        for espacio in ocupacion_ilegal:
+            bd.crear_alerta_sensor(espacio, 0, None)  # 0 = ocupado
+        
+        print(f"✅ SENSORES ACTUALIZADOS: {datos_sensores}")
+        if ocupacion_ilegal:
+            print(f"⚠️  OCUPACIÓN ILEGAL DETECTADA: {ocupacion_ilegal}")
+        
+        return {
+            "success": True,
+            "sensores_recibidos": datos_sensores,
+            "ocupacion_ilegal": ocupacion_ilegal,
+            "mensaje": f"✅ Sensores actualizados. Alertas: {len(ocupacion_ilegal)}"
+        }
+    except Exception as e:
+        return {"success": False, "mensaje": f"❌ Error: {str(e)}"}
+
+@app.get("/sensores/estado")
+def obtener_estado_sensores():
+    """Obtiene el estado actual de todos los espacios"""
+    estado = bd.obtener_estado_espacios()
+    return {
+        "estado": estado,
+        "espacios": list(estado.keys())
+    }
+
+@app.get("/sensores/alertas")
+def obtener_alertas_pendientes():
+    """Obtiene todas las alertas de sensores sin resolver (para vigilante)"""
+    alertas = bd.obtener_alertas_sensor_pendientes()
+    return {
+        "alertas": alertas,
+        "total_pendientes": len(alertas)
+    }
+
+@app.post("/sensores/alertas/{alerta_id}/resolver")
+def resolver_alerta(alerta_id: int):
+    """Marca una alerta como resuelta"""
+    try:
+        bd.resolver_alerta_sensor(alerta_id)
+        return {"success": True, "mensaje": f"✅ Alerta {alerta_id} resuelta"}
+    except Exception as e:
+        return {"success": False, "mensaje": f"❌ Error: {str(e)}"}
+

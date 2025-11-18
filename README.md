@@ -40,7 +40,19 @@ python -m uvicorn app:app --reload
 ```
 El backend se inicia en: `http://localhost:8000`
 
-### Terminal 2: Frontend
+### Terminal 2: Monitor de Sensores (Opcional - si hay Arduino)
+```bash
+cd Scripts
+python monitor_sensores_backend.py
+```
+
+### Terminal 3: RFID Backend (Opcional - si hay Arduino)
+```bash
+cd Scripts
+python lector_rfid_backend.py
+```
+
+### Terminal 4: Frontend
 ```bash
 cd Frontend
 python main.py
@@ -219,6 +231,118 @@ El proyecto utiliza:
 - **Backend**: FastAPI + SQLite
 - **Frontend**: Flet (interfaz gráfica en Python)
 - **Base de datos**: SQLite (crud.db)
+- **Hardware**: Arduino Nano + MFRC522 (RFID) + Sensores IR
+
+## 🔌 Integración con Arduino
+
+### Hardware Requerido
+- Arduino Nano (ATmega328P)
+- **2x Lector RFID RC522** (Uno para ENTRADA, otro para SALIDA)
+- 4x Sensores IR (MH Sensor Series)
+
+### Conexiones Arduino
+**Lector RFID ENTRADA:**
+- SS (Chip Select) → Pin 10
+- RST (Reset) → Pin 9
+- SCK → Pin 13
+- MOSI → Pin 11
+- MISO → Pin 12
+
+**Lector RFID SALIDA:**
+- SS (Chip Select) → Pin 8
+- RST (Reset) → Pin 7
+- SCK → Pin 13 (compartido)
+- MOSI → Pin 11 (compartido)
+- MISO → Pin 12 (compartido)
+
+**Sensores IR:**
+- Sensor A → Pin 2
+- Sensor B → Pin 3
+- Sensor C → Pin 4
+- Sensor D → Pin 5
+
+### Funcionalidades
+- **RFID Entry**: Lectura de tarjetas para registro de entrada
+- **RFID Exit**: Lectura de tarjetas para registro de salida (solo con entrada activa)
+- **Space Assignment**: Algoritmo Dijkstra para asignar espacios automáticamente
+- **Occupancy Detection**: Sensores IR detectan ocupación en tiempo real
+- **Illegal Parking Detection**: Sistema de alertas para ocupación sin asignación
+
+### Endpoints de Sensores
+```
+POST /sensores/actualizar
+  - Recibe: {"sensores": {"A": 1, "B": 0, "C": 1, "D": 0}}
+  - Respuesta: {"success": true, "ocupacion_ilegal": ["C"]}
+
+GET /sensores/estado
+  - Obtiene estado actual de todos los espacios
+
+GET /sensores/alertas
+  - Obtiene alertas pendientes (para panel vigilante)
+
+POST /sensores/alertas/{alerta_id}/resolver
+  - Marca una alerta como resuelta
+```
+
+### Endpoints de RFID
+```
+POST /registrar/entrada
+  - Recibe: {"id_usuario": 100}
+  - Valida usuario y asigna espacio automáticamente
+
+POST /registrar/salida
+  - Recibe: {"id_usuario": 100}
+  - Cierra entrada activa y libera espacio
+  - Solo funciona si hay entrada activa sin cerrar
+```
+
+### Archivos Arduino
+- `Arduino/rfid_y_sensores.ino` - Código principal (2x RFID + Sensores)
+
+### Scripts Python
+- `Scripts/monitor_sensores_backend.py` - Lee sensores cada 10s y envía al backend
+- `Scripts/lector_rfid_backend.py` - Lee RFID (entrada/salida) del Arduino y registra
+
+### Configuración de Puertos
+En los scripts de Arduino (`monitor_sensores_backend.py`, `lector_rfid_backend.py`):
+```python
+PUERTO_SERIAL = "COM3"  # Cambiar según tu puerto
+VELOCIDAD_BAUD = 9600
+```
+
+### Formato JSON del Arduino
+**ENTRADA:**
+```json
+{"id_usuario": 100, "tipo": "ENTRADA"}
+```
+
+**SALIDA:**
+```json
+{"id_usuario": 100, "tipo": "SALIDA"}
+```
+
+### Flujo Completo
+
+**ENTRADA:**
+1. Usuario acerca tarjeta al lector de ENTRADA
+2. Arduino lee y envía: `{"id_usuario": 100, "tipo": "ENTRADA"}`
+3. `lector_rfid_backend.py` procesa y envía a `/registrar/entrada`
+4. Backend valida usuario y asigna espacio (Dijkstra)
+5. Usuario estaciona en espacio asignado
+
+**SALIDA:**
+1. Usuario acerca tarjeta al lector de SALIDA
+2. Arduino lee y envía: `{"id_usuario": 100, "tipo": "SALIDA"}`
+3. `lector_rfid_backend.py` procesa y envía a `/registrar/salida`
+4. Backend verifica que hay entrada activa
+5. Si válido: cierra entrada y libera espacio
+6. Si error: muestra mensaje (no hay entrada activa, etc)
+
+**SENSORES:**
+- `monitor_sensores_backend.py` lee sensores cada 10s
+- Backend detecta ocupación ilegal (espacio ocupado sin asignación)
+- Crea alertas automáticamente
+- Vigilante ve alertas en panel y puede resolver
 
 ## 📋 Estado de Funcionalidades
 
@@ -231,7 +355,11 @@ El proyecto utiliza:
 | Admin - CRUD usuarios | ✅ Completo | Incluye eliminar con confirmación |
 | Vigilante - Ver usuarios | ✅ Completo | Tabla con todos los datos |
 | Historial | ✅ Completo | Últimas 10 entradas |
-| Multas/Advertencias | ⏳ En desarrollo | |
+| Multas/Advertencias | ✅ Completo | Sistema de escalation (3 adv → multa) |
+| RFID Entry | ✅ Completo | Lectura de tarjetas y asignación automática |
+| Space Assignment | ✅ Completo | Algoritmo Dijkstra |
+| Occupancy Sensors | ✅ Completo | Detección de ocupación ilegal |
+| Arduino Integration | ✅ Completo | RFID + Sensores IR |
 | Boleto digital | ⏳ En desarrollo | |
 | Notificaciones | ⏳ En desarrollo | |
 

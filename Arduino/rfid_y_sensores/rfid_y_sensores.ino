@@ -1,26 +1,36 @@
 #include <SPI.h>
 #include <MFRC522.h>
 
-#define SS_PIN 10
-#define RST_PIN 9
+// RFID ENTRADA
+#define SS_PIN_ENTRADA 10
+#define RST_PIN_ENTRADA 9
 
-// Pines de los sensores IR
-#define SENSOR_A A0
-#define SENSOR_B A1
-#define SENSOR_C A2
-#define SENSOR_D A3
+// RFID SALIDA
+#define SS_PIN_SALIDA 8
+#define RST_PIN_SALIDA 7
 
-MFRC522 mfrc522(SS_PIN, RST_PIN);
+// Pines de los sensores IR (DIGITAL)
+#define SENSOR_A 2
+#define SENSOR_B 3
+#define SENSOR_C 4
+#define SENSOR_D 5
+
+// Lectores RFID
+MFRC522 mfrc522_entrada(SS_PIN_ENTRADA, RST_PIN_ENTRADA);
+MFRC522 mfrc522_salida(SS_PIN_SALIDA, RST_PIN_SALIDA);
 MFRC522::MIFARE_Key key;
 
-unsigned long ultimoMensaje = 0;
+// Timers para no bloquear
 unsigned long ultimoEnvioSensores = 0;
 const unsigned long INTERVALO_SENSORES = 10000; // 10 segundos
 
 void setup() {
   Serial.begin(9600);
   SPI.begin();
-  mfrc522.PCD_Init();
+  
+  // Inicializar ambos lectores RFID
+  mfrc522_entrada.PCD_Init();
+  mfrc522_salida.PCD_Init();
   
   // Configurar pines de sensores como entrada
   pinMode(SENSOR_A, INPUT);
@@ -34,32 +44,45 @@ void setup() {
   }
   
   Serial.println("========================================");
-  Serial.println("   LECTOR RFID + SENSORES IR");
+  Serial.println("   RFID ENTRADA + SALIDA + SENSORES");
   Serial.println("========================================");
-  Serial.println("Sistema listo. Acerca una tarjeta...");
+  Serial.println("Sistema listo...");
   Serial.println("========================================");
+  
+  // Enviar primer lectura de sensores
+  delay(1000);
+  enviarEstadoSensores();
 }
 
 void loop() {
-  // Mostrar mensaje cada 3 segundos si no hay tarjeta
-  if (millis() - ultimoMensaje >= 3000) {
-    Serial.println("Esperando tarjeta...");
-    ultimoMensaje = millis();
-  }
-
   // Enviar estado de sensores cada 10 segundos
   if (millis() - ultimoEnvioSensores >= INTERVALO_SENSORES) {
     enviarEstadoSensores();
     ultimoEnvioSensores = millis();
   }
 
-  // Verificar si hay una nueva tarjeta
-  if (!mfrc522.PICC_IsNewCardPresent() || !mfrc522.PICC_ReadCardSerial()) {
-    return;
+  // LECTOR ENTRADA
+  if (mfrc522_entrada.PICC_IsNewCardPresent() && mfrc522_entrada.PICC_ReadCardSerial()) {
+    procesarTarjeta(mfrc522_entrada, "ENTRADA");
+    mfrc522_entrada.PICC_HaltA();
+    mfrc522_entrada.PCD_StopCrypto1();
+    delay(2000);
   }
 
+  // LECTOR SALIDA
+  if (mfrc522_salida.PICC_IsNewCardPresent() && mfrc522_salida.PICC_ReadCardSerial()) {
+    procesarTarjeta(mfrc522_salida, "SALIDA");
+    mfrc522_salida.PICC_HaltA();
+    mfrc522_salida.PCD_StopCrypto1();
+    delay(2000);
+  }
+}
+
+// Función para procesar tarjeta (entrada o salida)
+void procesarTarjeta(MFRC522 &mfrc522, String tipo) {
   Serial.println("\n========================================");
-  Serial.println("✓ TARJETA DETECTADA");
+  Serial.print("✓ TARJETA DETECTADA - ");
+  Serial.println(tipo);
   Serial.println("========================================");
   
   // Mostrar UID
@@ -110,10 +133,12 @@ void loop() {
       Serial.print("ID USUARIO: ");
       Serial.println(idUsuario);
       
-      // Enviar en formato JSON para el backend
+      // Enviar en formato JSON para el backend con tipo de transacción
       Serial.print("JSON: {\"id_usuario\":");
       Serial.print(idUsuario);
-      Serial.println("}");
+      Serial.print(",\"tipo\":\"");
+      Serial.print(tipo);
+      Serial.println("\"}");
       
       Serial.println("========================================\n");
     } else {
@@ -132,36 +157,21 @@ void loop() {
   delay(2000);
 }
 
-// FUNCIÓN para enviar estado de sensores
+// FUNCIÓN para leer y enviar estado de sensores
 void enviarEstadoSensores() {
-  // Leer valores analógicos RAW
-  int rawA = analogRead(SENSOR_A);
-  int rawB = analogRead(SENSOR_B);
-  int rawC = analogRead(SENSOR_C);
-  int rawD = analogRead(SENSOR_D);
+  // Leer valores DIGITALES
+  int estadoA = digitalRead(SENSOR_A);
+  int estadoB = digitalRead(SENSOR_B);
+  int estadoC = digitalRead(SENSOR_C);
+  int estadoD = digitalRead(SENSOR_D);
   
-  Serial.print("[DEBUG] RAW VALUES - A:");
-  Serial.print(rawA);
-  Serial.print(" B:");
-  Serial.print(rawB);
-  Serial.print(" C:");
-  Serial.print(rawC);
-  Serial.print(" D:");
-  Serial.println(rawD);
-  
-  // INVERTIR LÓGICA: < 100 = ocupado (en lugar de > 100)
-  int ocupadoA = (rawA < 100) ? 1 : 0;
-  int ocupadoB = (rawB < 100) ? 1 : 0;
-  int ocupadoC = (rawC < 100) ? 1 : 0;
-  int ocupadoD = (rawD < 100) ? 1 : 0;
-  
-  // Enviar formato simple: SENSORES: A=1,B=0,C=1,D=0
+  // ENVIAR SIEMPRE (no solo cuando hay cambios)
   Serial.print("SENSORES: A=");
-  Serial.print(ocupadoA);
+  Serial.print(estadoA);
   Serial.print(",B=");
-  Serial.print(ocupadoB);
+  Serial.print(estadoB);
   Serial.print(",C=");
-  Serial.print(ocupadoC);
+  Serial.print(estadoC);
   Serial.print(",D=");
-  Serial.println(ocupadoD);
+  Serial.println(estadoD);
 }

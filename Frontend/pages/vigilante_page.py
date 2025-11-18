@@ -9,7 +9,75 @@ def vigilante_view(page: ft.Page, API_URL: str):
     page.vertical_alignment = ft.MainAxisAlignment.CENTER
 
     salida = ft.Text("", size=14, color=ft.Colors.BLUE_GREY_900, selectable=True)
+    
+    # Contenedor para notificaciones en esquina
+    notificaciones_container = ft.Column(
+        controls=[],
+        alignment=ft.MainAxisAlignment.START,
+        spacing=10
+    )
 
+    # =====================================================
+    # FUNCIONES DE NOTIFICACIONES
+    # =====================================================
+    
+    def mostrar_notificacion(titulo, mensaje, tipo="info", duracion=5000):
+        """Muestra una notificación flotante en la esquina superior derecha"""
+        import threading
+        import time
+        
+        # Color según tipo
+        colores = {
+            "exito": ft.Colors.GREEN_700,
+            "error": ft.Colors.RED_700,
+            "alerta": ft.Colors.ORANGE_700,
+            "info": ft.Colors.BLUE_700
+        }
+        
+        bgcolor = colores.get(tipo, ft.Colors.BLUE_700)
+        icono = {"exito": "✅", "error": "❌", "alerta": "⚠️", "info": "ℹ️"}.get(tipo, "ℹ️")
+        
+        # Crear notificación
+        notif = ft.Container(
+            content=ft.Column([
+                ft.Row([
+                    ft.Text(f"{icono} {titulo}", weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE, size=12),
+                    ft.IconButton(
+                        ft.icons.CLOSE,
+                        icon_size=16,
+                        icon_color=ft.Colors.WHITE,
+                        on_click=lambda _: remover_notif()
+                    )
+                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                ft.Text(mensaje, color=ft.Colors.WHITE, size=11)
+            ], spacing=5),
+            padding=15,
+            bgcolor=bgcolor,
+            border_radius=8,
+            width=320,
+            shadow=ft.BoxShadow(blur_radius=8, color=ft.Colors.BLACK26),
+        )
+        
+        def remover_notif():
+            if notif in notificaciones_container.controls:
+                notificaciones_container.controls.remove(notif)
+            page.update()
+        
+        # Agregar a contenedor
+        notificaciones_container.controls.append(notif)
+        page.update()
+        
+        # Desaparecer automáticamente
+        def auto_remove():
+            time.sleep(duracion / 1000)
+            remover_notif()
+        
+        threading.Thread(target=auto_remove, daemon=True).start()
+    
+    # =====================================================
+    # MONITOR DE ALERTAS EN TIEMPO REAL
+    # =====================================================
+    
     # =====================================================
     # FUNCIONES PRINCIPALES
     # =====================================================
@@ -215,11 +283,12 @@ def vigilante_view(page: ft.Page, API_URL: str):
             panel = ft.Container(
                 content=ft.Column([
                     ft.Text("DATOS DE USUARIOS", size=20, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_900),
-                    ft.Container(content=tabla, width=1000, height=400),
-                    ft.ElevatedButton("← Volver al Panel", on_click=lambda _: vigilante_view(page, API_URL), width=200),
-                ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=15),
+                    ft.Container(content=tabla, expand=True),
+                    ft.ElevatedButton("← Volver al Panel", on_click=lambda _: vigilante_view(page, API_URL), expand=True, height=40),
+                ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=15, expand=True, scroll=ft.ScrollMode.AUTO),
                 padding=20,
-                bgcolor=ft.Colors.WHITE,
+                expand=True,
+                bgcolor=ft.Colors.GREY_200,
                 border_radius=6,
                 shadow=ft.BoxShadow(blur_radius=10, color=ft.Colors.BLUE_GREY_100),
             )
@@ -231,7 +300,7 @@ def vigilante_view(page: ft.Page, API_URL: str):
 
     def registrar_acceso_manual(tipo):
         """Diálogo para registrar entrada o salida manual por ID de usuario"""
-        id_input = ft.TextField(label="ID de usuario", width=250, keyboard_type=ft.KeyboardType.NUMBER)
+        id_input = ft.TextField(label="ID de usuario", expand=True, keyboard_type=ft.KeyboardType.NUMBER)
         
         user_data = {"existe": False, "datos": {}}
         
@@ -241,7 +310,7 @@ def vigilante_view(page: ft.Page, API_URL: str):
         usos_restantes = ft.Text("", size=12, color=ft.Colors.BLUE_GREY_700)
         estado_entrada = ft.Text("", size=12, color=ft.Colors.ORANGE_700, weight=ft.FontWeight.BOLD)
         resultado = ft.Text("", size=12, weight=ft.FontWeight.BOLD)
-        btn_registrar = ft.ElevatedButton(f"Registrar {tipo.upper()}", disabled=True, width=200)
+        btn_registrar = ft.ElevatedButton(f"Registrar {tipo.upper()}", disabled=True, expand=True, height=40)
         
         contenedor_datos = ft.Container(
             content=ft.Column([
@@ -403,8 +472,8 @@ def vigilante_view(page: ft.Page, API_URL: str):
 
     def enviar_advertencia(e):
         """Diálogo para enviar una advertencia a un usuario"""
-        id_input = ft.TextField(label="ID de usuario", width=250, keyboard_type=ft.KeyboardType.NUMBER)
-        id_historial_input = ft.TextField(label="ID de entrada (historial)", width=250, keyboard_type=ft.KeyboardType.NUMBER)
+        id_input = ft.TextField(label="ID de usuario", expand=True, keyboard_type=ft.KeyboardType.NUMBER)
+        id_historial_input = ft.TextField(label="ID de entrada (historial)", expand=True, keyboard_type=ft.KeyboardType.NUMBER)
         
         user_data = {"existe": False, "datos": {}}
         
@@ -413,7 +482,7 @@ def vigilante_view(page: ft.Page, API_URL: str):
         advertencias_display = ft.Text("", size=12, color=ft.Colors.BLUE_GREY_700)
         ids_disponibles = ft.Text("", size=11, color=ft.Colors.BLUE_900, weight=ft.FontWeight.BOLD)
         resultado = ft.Text("", size=12, weight=ft.FontWeight.BOLD)
-        btn_enviar = ft.ElevatedButton("ENVIAR ADVERTENCIA", disabled=True, width=200)
+        btn_enviar = ft.ElevatedButton("ENVIAR ADVERTENCIA", disabled=True, expand=True, height=40)
         
         contenedor_datos = ft.Container(
             content=ft.Column([
@@ -613,16 +682,16 @@ def vigilante_view(page: ft.Page, API_URL: str):
 
     def enviar_multa(e):
         """Diálogo para enviar una multa (después de 3 advertencias)"""
-        id_input = ft.TextField(label="ID de usuario", width=250, keyboard_type=ft.KeyboardType.NUMBER)
-        id_historial_input = ft.TextField(label="ID de entrada (historial)", width=250, keyboard_type=ft.KeyboardType.NUMBER)
-        monto_input = ft.TextField(label="Monto ($)", width=250, value="50.0", keyboard_type=ft.KeyboardType.NUMBER)
+        id_input = ft.TextField(label="ID de usuario", expand=True, keyboard_type=ft.KeyboardType.NUMBER)
+        id_historial_input = ft.TextField(label="ID de entrada (historial)", expand=True, keyboard_type=ft.KeyboardType.NUMBER)
+        monto_input = ft.TextField(label="Monto ($)", expand=True, value="50.0", keyboard_type=ft.KeyboardType.NUMBER)
         
         user_data = {"existe": False}
         
         nombre_display = ft.Text("", size=12, color=ft.Colors.BLUE_GREY_700)
         advertencias_display = ft.Text("", size=12, color=ft.Colors.RED_700, weight=ft.FontWeight.BOLD)
         resultado = ft.Text("", size=12, weight=ft.FontWeight.BOLD)
-        btn_enviar = ft.ElevatedButton("ENVIAR MULTA", disabled=True, width=200, bgcolor=ft.Colors.RED_900)
+        btn_enviar = ft.ElevatedButton("ENVIAR MULTA", disabled=True, expand=True, height=40, bgcolor=ft.Colors.RED_900)
         
         contenedor_datos = ft.Container(
             content=ft.Column([
@@ -762,7 +831,7 @@ def vigilante_view(page: ft.Page, API_URL: str):
         
         titulo_accesos = ft.Text("Accesos Recientes", size=24, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_900)
         contenedor_accesos = ft.Column([], scroll=ft.ScrollMode.AUTO)
-        btn_refrescar = ft.ElevatedButton("🔄 REFRESCAR", bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, width=250, height=40)
+        btn_refrescar = ft.ElevatedButton("🔄 REFRESCAR", bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, expand=True, height=40)
         
         def cargar_accesos():
             """Carga los accesos recientes desde el API"""
@@ -835,16 +904,16 @@ def vigilante_view(page: ft.Page, API_URL: str):
                 ft.Divider(height=10, color=ft.Colors.TRANSPARENT),
                 ft.Container(
                     content=contenedor_accesos,
-                    width=600,
-                    height=450,
+                    expand=True,
                     border_radius=6,
                     border=ft.border.all(1, ft.Colors.BLUE_GREY_300),
                 ),
                 ft.Divider(height=10, color=ft.Colors.TRANSPARENT),
-                ft.ElevatedButton("← VOLVER AL PANEL", on_click=lambda _: vigilante_view(page, API_URL), bgcolor=ft.Colors.BLUE_GREY_700, color=ft.Colors.WHITE, width=250, height=40),
-            ], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+                ft.ElevatedButton("← VOLVER AL PANEL", on_click=lambda _: vigilante_view(page, API_URL), bgcolor=ft.Colors.BLUE_GREY_700, color=ft.Colors.WHITE, expand=True, height=40),
+            ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, expand=True, scroll=ft.ScrollMode.AUTO),
             padding=30,
-            bgcolor=ft.Colors.WHITE,
+            expand=True,
+            bgcolor=ft.Colors.GREY_200,
             border_radius=6,
             shadow=ft.BoxShadow(blur_radius=10, color=ft.Colors.BLUE_GREY_100),
         )
@@ -865,6 +934,112 @@ def vigilante_view(page: ft.Page, API_URL: str):
         
         threading.Thread(target=auto_refresh, daemon=True).start()
 
+    def ver_alertas_sensores(e):
+        """Ver alertas no autorizadas"""
+        page.clean()
+        
+        try:
+            r = requests.get(f"{API_URL}/sensores/alertas")
+            data = r.json()
+            alertas = data.get("alertas", [])
+            
+            # Crear tabla de alertas
+            tabla_alertas = ft.DataTable(
+                columns=[
+                    ft.DataColumn(ft.Text("Espacio", weight=ft.FontWeight.BOLD)),
+                    ft.DataColumn(ft.Text("Estado", weight=ft.FontWeight.BOLD)),
+                    ft.DataColumn(ft.Text("Hora", weight=ft.FontWeight.BOLD)),
+                ],
+                rows=[],
+                vertical_lines=ft.BorderSide(1, ft.Colors.BLUE_GREY_200),
+                horizontal_lines=ft.BorderSide(1, ft.Colors.BLUE_GREY_200),
+            )
+            
+            # Llenar tabla
+            for alerta in alertas:
+                espacio = alerta.get("espacio", "?")
+                estado = "⚠️ Ocupado sin asignación"
+                hora = str(alerta.get("fecha", ""))[:19]
+                
+                tabla_alertas.rows.append(
+                    ft.DataRow(
+                        cells=[
+                            ft.DataCell(ft.Text(espacio, weight=ft.FontWeight.BOLD, size=14)),
+                            ft.DataCell(ft.Text(estado, size=12)),
+                            ft.DataCell(ft.Text(hora, size=11)),
+                        ]
+                    )
+                )
+            
+            def borrar_todas_alertas(_):
+                """Borra todas las alertas pendientes"""
+                try:
+                    for alerta in alertas:
+                        alerta_id = alerta.get("id")
+                        requests.post(f"{API_URL}/sensores/alertas/{alerta_id}/resolver")
+                    # Recargar tabla
+                    ver_alertas_sensores(None)
+                except Exception as ex:
+                    resultado.value = f"❌ Error: {str(ex)}"
+                    page.update()
+            
+            if not alertas:
+                # Si no hay alertas, mostrar mensaje
+                contenido = ft.Column([
+                    ft.Text("✅ No hay alertas pendientes", size=14, color=ft.Colors.GREEN_700, weight=ft.FontWeight.BOLD),
+                ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=20)
+            else:
+                contenido = ft.Column([
+                    ft.Text(f"⚠️ {len(alertas)} Alerta(s) Pendiente(s)", size=14, weight=ft.FontWeight.BOLD, color=ft.Colors.RED_700),
+                    ft.Divider(height=10),
+                    tabla_alertas,
+                ], scroll="adaptive", spacing=10, horizontal_alignment=ft.CrossAxisAlignment.CENTER)
+            
+            resultado = ft.Text("", size=12, color=ft.Colors.GREEN_700)
+            
+            # Botón para borrar alertas (fijo en la parte superior)
+            btn_borrar = ft.ElevatedButton(
+                "🗑️ BORRAR",
+                on_click=borrar_todas_alertas,
+                bgcolor=ft.Colors.RED_700,
+                color=ft.Colors.WHITE,
+                width=120,
+                height=40
+            ) if alertas else ft.Container()
+            
+            # Envolver tabla en contenedor con altura máxima y scroll
+            tabla_container = ft.Container(
+                content=tabla_alertas,
+                expand=True,
+                border_radius=6,
+            )
+            
+            panel = ft.Container(
+                content=ft.Column([
+                    ft.Row([
+                        ft.ElevatedButton("⬅️ Volver", on_click=lambda _: vigilante_view(page, API_URL), bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, width=100, height=40),
+                        ft.Text("ALERTAS NO AUTORIZADAS", size=18, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_900, expand=True, text_align=ft.TextAlign.CENTER),
+                        ft.ElevatedButton("🔄", on_click=lambda _: ver_alertas_sensores(None), bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, width=50, height=40),
+                        btn_borrar,
+                    ], spacing=10, alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                    ft.Divider(height=15),
+                    contenido,
+                    ft.Divider(height=10),
+                    resultado,
+                ], spacing=10, horizontal_alignment=ft.CrossAxisAlignment.CENTER, expand=True, scroll=ft.ScrollMode.AUTO),
+                padding=20,
+                expand=True,
+                bgcolor=ft.Colors.GREY_200,
+                border_radius=6,
+                shadow=ft.BoxShadow(blur_radius=10, color=ft.Colors.BLUE_GREY_100),
+            )
+            
+            page.add(panel)
+            
+        except Exception as ex:
+            resultado = ft.Text(f"❌ Error: {str(ex)}", size=12, color=ft.Colors.RED_700)
+            page.add(resultado)
+
     # =====================================================
     # PANEL PRINCIPAL
     # =====================================================
@@ -873,14 +1048,15 @@ def vigilante_view(page: ft.Page, API_URL: str):
     logo = ft.Text("SmartPark", size=32, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_900)
 
     botones = [
-        ft.ElevatedButton("👀 VER ACCESOS RECIENTES", on_click=ver_accesos_recientes, bgcolor=ft.Colors.GREEN_900, color=ft.Colors.WHITE, width=250, height=45),
-        ft.ElevatedButton("VER DATOS DE USUARIOS", on_click=ver_datos_usuarios, bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, width=250, height=45),
-        ft.ElevatedButton("REGISTRAR ENTRADA MANUAL", on_click=lambda e: registrar_acceso_manual("entrada"), bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, width=250, height=45),
-        ft.ElevatedButton("REGISTRAR SALIDA MANUAL", on_click=lambda e: registrar_acceso_manual("salida"), bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, width=250, height=45),
-        ft.ElevatedButton("ENVIAR ADVERTENCIA", on_click=enviar_advertencia, bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, width=250, height=45),
-        ft.ElevatedButton("ENVIAR MULTA", on_click=enviar_multa, bgcolor=ft.Colors.RED_900, color=ft.Colors.WHITE, width=250, height=45),
-        ft.ElevatedButton("AJUSTES DE APLICACION", on_click=placeholder, bgcolor=ft.Colors.BLUE_GREY_700, color=ft.Colors.WHITE, width=250, height=45),
-        ft.ElevatedButton("CERRAR APLICACION", on_click=cerrar_aplicacion, bgcolor=ft.Colors.RED_700, color=ft.Colors.WHITE, width=250, height=45),
+        ft.ElevatedButton("👀 VER ACCESOS RECIENTES", on_click=ver_accesos_recientes, bgcolor=ft.Colors.GREEN_900, color=ft.Colors.WHITE, expand=True, height=45),
+        ft.ElevatedButton("⚠️ VER ALERTAS NO AUTORIZADAS", on_click=ver_alertas_sensores, bgcolor=ft.Colors.ORANGE_900, color=ft.Colors.WHITE, expand=True, height=45),
+        ft.ElevatedButton("VER DATOS DE USUARIOS", on_click=ver_datos_usuarios, bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, expand=True, height=45),
+        ft.ElevatedButton("REGISTRAR ENTRADA MANUAL", on_click=lambda e: registrar_acceso_manual("entrada"), bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, expand=True, height=45),
+        ft.ElevatedButton("REGISTRAR SALIDA MANUAL", on_click=lambda e: registrar_acceso_manual("salida"), bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, expand=True, height=45),
+        ft.ElevatedButton("ENVIAR ADVERTENCIA", on_click=enviar_advertencia, bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, expand=True, height=45),
+        ft.ElevatedButton("ENVIAR MULTA", on_click=enviar_multa, bgcolor=ft.Colors.RED_900, color=ft.Colors.WHITE, expand=True, height=45),
+        ft.ElevatedButton("AJUSTES DE APLICACION", on_click=placeholder, bgcolor=ft.Colors.BLUE_GREY_700, color=ft.Colors.WHITE, expand=True, height=45),
+        ft.ElevatedButton("CERRAR APLICACION", on_click=cerrar_aplicacion, bgcolor=ft.Colors.RED_700, color=ft.Colors.WHITE, expand=True, height=45),
     ]
 
     panel = ft.Container(
@@ -888,12 +1064,26 @@ def vigilante_view(page: ft.Page, API_URL: str):
             [logo, titulo, ft.Divider(height=15, color=ft.Colors.TRANSPARENT)] + botones + [ft.Divider(height=15, color=ft.Colors.TRANSPARENT), salida],
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             spacing=10,
+            scroll=ft.ScrollMode.AUTO,
         ),
         padding=40,
-        width=420,
-        bgcolor=ft.Colors.WHITE,
+        width=500,
+        bgcolor=ft.Colors.GREY_200,
         border_radius=6,
         shadow=ft.BoxShadow(blur_radius=10, color=ft.Colors.BLUE_GREY_100),
     )
 
-    page.add(panel)
+    # Crear layout con notificaciones en esquina superior derecha
+    # Las notificaciones se agregan como overlay para aparecer encima de todo
+    page.overlay.append(notificaciones_container)
+    
+    # Posicionar notificaciones en esquina superior derecha
+    notificaciones_container.left = 20
+    notificaciones_container.top = 20
+    notificaciones_container.width = 340
+    
+    page.add(ft.Container(
+        content=panel,
+        alignment=ft.alignment.center,
+        expand=True,
+    ))

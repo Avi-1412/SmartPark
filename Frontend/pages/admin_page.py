@@ -663,7 +663,7 @@ def admin_view(page: ft.Page, API_URL: str):
         ),
         padding=40,
         width=500,
-        bgcolor=ft.Colors.WHITE,
+        bgcolor=ft.Colors.GREY_200,
         border_radius=6,
         shadow=ft.BoxShadow(blur_radius=10, color=ft.Colors.BLUE_GREY_100),
     )
