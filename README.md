@@ -1,14 +1,15 @@
-# 🚗 SmartPark - Sistema de Gestión de Estacionamiento
+# 🚗 SmartPark - Sistema de Gestión de Estacionamiento Inteligente
 
-Sistema completo de gestión de estacionamiento con roles de usuario (Admin, Vigilante, Usuario) desarrollado en Python con FastAPI y Flet.
+Sistema completo e integrado de gestión de estacionamiento con **RFID, sensores IR, Arduino y detección de ocupación no autorizada**. Desarrollado con Python FastAPI (Backend) y Flet (Frontend).
 
 ## 📋 Descripción
 
-SmartPark es una aplicación de escritorio para gestionar:
-- **Usuarios**: Registro, visualización de datos personales y tarjeta digital
-- **Vehículos**: Registro de placas, marcas y modelos
-- **Administradores**: Gestión completa de usuarios y datos
-- **Vigilantes**: Visualización de usuarios y vehículos registrados
+SmartPark automatiza completamente la gestión de estacionamiento:
+- **Entrada/Salida automática**: Lectura RFID sin contacto
+- **Asignación inteligente**: Algoritmo Dijkstra para el espacio más cercano
+- **Detección de ocupación**: Sensores IR detectan autos no autorizados
+- **3 Roles diferenciados**: Usuario, Vigilante, Admin con permisos específicos
+- **Historial completo**: Registro de todas las entradas/salidas con horas exactas
 
 ## 🛠️ Requisitos
 
@@ -33,34 +34,49 @@ pip install flet
 
 ## 🚀 Inicio Rápido
 
-### Terminal 1: Backend
-```bash
-cd Backend/Modulos
-python -m uvicorn app:app --reload
-```
-El backend se inicia en: `http://localhost:8000`
+### Configuración Inicial
 
-### Terminal 2: Monitor de Sensores (Opcional - si hay Arduino)
 ```bash
-cd Scripts
-python monitor_sensores_backend.py
-```
+# 1. Clonar proyecto
+git clone https://github.com/Avi-1412/SmartPark.git
+cd SmartPark
 
-### Terminal 3: RFID Backend (Opcional - si hay Arduino)
-```bash
-cd Scripts
-python lector_rfid_backend.py
+# 2. Crear ambiente virtual
+python -m venv venv
+venv\Scripts\activate
+
+# 3. Instalar dependencias
+pip install -r Backend/Modulos/requirements.txt
+pip install flet
 ```
 
-### Terminal 4: Frontend
+### Iniciar Sistema (4 Terminales)
+
+**Terminal 1: Backend (API)**
+```bash
+uvicorn Backend.Modulos.app:app --reload
+# Corre en: http://127.0.0.1:8000
+```
+
+**Terminal 2: RFID Reader (Lee tarjetas del Arduino)**
+```bash
+python Scripts/lector_rfid_backend.py
+# Conecta Arduino COM3 (entrada) y COM4 (salida)
+```
+
+**Terminal 3: Reset BD (Opcional - Solo primera vez)**
+```bash
+python reset_bd.py
+# Crea BD con usuarios de prueba
+```
+
+**Terminal 4: Frontend (GUI)**
 ```bash
 cd Frontend
-python main.py
+python Main.py
 ```
 
-## 🔐 Credenciales de Prueba
-
-Al iniciar por primera vez, el sistema crea automáticamente 3 usuarios:
+### Credenciales de Prueba
 
 | Usuario | Contraseña | Rol | ID |
 |---------|-----------|-----|-----|
@@ -68,32 +84,80 @@ Al iniciar por primera vez, el sistema crea automáticamente 3 usuarios:
 | sandra.ruiz | admin123 | admin | 200 |
 | david.ortega | vigilante123 | vigilante | 300 |
 
-## 📁 Estructura del Proyecto
+## 🏗️ Arquitectura del Sistema
 
 ```
-SmartPark/
-├── Backend/
-│   ├── BaseDatos/
-│   │   ├── bd.py                 # Funciones de BD y lógica
-│   │   ├── crud.db               # Base de datos SQLite
-│   │   └── __init__.py
-│   ├── Modulos/
-│   │   ├── app.py                # API FastAPI
-│   │   ├── requirements.txt      # Dependencias
-│   │   └── __init__.py
-│   └── __init__.py
-├── Frontend/
-│   ├── main.py                   # Punto de entrada
-│   ├── GUIPrincipal.py           # Interfaz principal
-│   ├── pages/
-│   │   ├── admin_page.py         # Panel Admin
-│   │   ├── usuario_page.py       # Panel Usuario
-│   │   ├── vigilante_page.py     # Panel Vigilante
-│   │   └── __pycache__/
-│   └── __pycache__/
-├── reset_bd.py                   # Script para resetear la BD
-└── README.md                     # Este archivo
+┌─────────────────────────────────────────────────────────────┐
+│                      ENTRADA Y SALIDA                        │
+│  Arduino Nano            Arduino UNO                        │
+│     (COM3)                  (COM4)                         │
+│  ┌──────────────┐       ┌──────────────┐                   │
+│  │ ENTRADA      │       │ SALIDA       │                   │
+│  │ RC522 RFID   │       │ RC522 RFID   │                   │
+│  │ 4x Sensores  │       │              │                   │
+│  │ IR (A,B,C,D) │       │              │                   │
+│  └──────┬───────┘       └──────┬───────┘                   │
+│         │ Serial 9600          │ Serial 9600               │
+└─────────┼──────────────────────┼────────────────────────────┘
+          │                      │
+          └──────────┬───────────┘
+                     │
+          ┌──────────▼──────────┐
+          │  lector_rfid_       │
+          │  backend.py         │
+          │  (Python Script)    │
+          │                     │
+          │ Lee RFID x2         │
+          │ Envía JSON al API   │
+          └──────────┬──────────┘
+                     │ HTTP POST
+        ┌────────────▼────────────┐
+        │   FastAPI Backend       │
+        │  (app.py en puerto 8000)│
+        │                         │
+        │ POST /registrar/entrada │
+        │ POST /registrar/salida  │
+        │ GET /historial/usuario  │
+        │ POST /sensores/alertas  │
+        └────────────┬────────────┘
+                     │ SQLite
+        ┌────────────▼────────────┐
+        │   Base de Datos         │
+        │      (crud.db)          │
+        │                         │
+        │ Tablas:                 │
+        │ - usuarios              │
+        │ - login                 │
+        │ - historial             │
+        │ - estado_sensores       │
+        │ - alertas_sensor        │
+        │ - advertencias          │
+        │ - multas                │
+        └─────────────────────────┘
+        
+        ┌─────────────────────────┐
+        │  Frontend Flet (GUI)    │
+        │   (Main.py)             │
+        │                         │
+        │ ├─ Login Page           │
+        │ ├─ Admin Page           │
+        │ ├─ Usuario Page         │
+        │ └─ Vigilante Page       │
+        └─────────────────────────┘
 ```
+
+### Componentes Principales
+
+| Componente | Archivo | Función |
+|-----------|---------|---------|
+| **Backend API** | `Backend/Modulos/app.py` | FastAPI endpoints (439 líneas) |
+| **Base de Datos** | `Backend/BaseDatos/bd.py` | Lógica SQL y operaciones (1119 líneas) |
+| **Asignador** | `Backend/Modulos/asignador.py` | Algoritmo Dijkstra (250 líneas) |
+| **Lector RFID** | `Scripts/lector_rfid_backend.py` | Lee 2 Arduinos en paralelo (191 líneas) |
+| **Frontend** | `Frontend/Main.py` | GUI Flet login (156 líneas) |
+| **Rol Admin** | `Frontend/pages/admin_page.py` | Panel administrador |
+| **Rol Vigilante** | `Frontend/pages/vigilante_page.py` | Panel vigilante (1093 líneas) |
+| **Rol Usuario** | `Frontend/pages/usuario_page.py` | Panel usuario |
 
 ## 🎯 Funcionalidades por Rol
 
@@ -344,29 +408,41 @@ VELOCIDAD_BAUD = 9600
 - Crea alertas automáticamente
 - Vigilante ve alertas en panel y puede resolver
 
-## 📋 Estado de Funcionalidades
+## ✅ Estado de Funcionalidades
 
-| Feature | Estado | Notas |
-|---------|--------|-------|
-| Login | ✅ Completo | Autenticación con 2FA pendiente |
-| Registro de usuarios | ✅ Completo | Con validaciones |
-| Gestión de autos | ✅ Completo | Marca y modelo incluidos |
-| Tarjeta digital | ✅ Completo | Con datos de vehículos |
-| Admin - CRUD usuarios | ✅ Completo | Incluye eliminar con confirmación |
-| Vigilante - Ver usuarios | ✅ Completo | Tabla con todos los datos |
-| Historial | ✅ Completo | Últimas 10 entradas |
-| Multas/Advertencias | ✅ Completo | Sistema de escalation (3 adv → multa) |
-| RFID Entry | ✅ Completo | Lectura de tarjetas y asignación automática |
-| Space Assignment | ✅ Completo | Algoritmo Dijkstra |
-| Occupancy Sensors | ✅ Completo | Detección de ocupación ilegal |
-| Arduino Integration | ✅ Completo | RFID + Sensores IR |
-| Boleto digital | ⏳ En desarrollo | |
-| Notificaciones | ⏳ En desarrollo | |
+### COMPLETO Y FUNCIONANDO
 
-## 📞 Soporte
+| Funcionalidad | Estado | Detalles |
+|---------------|--------|----------|
+| **Login** | ✅ | Autenticación con 3 roles (usuario/admin/vigilante) |
+| **RFID Entrada** | ✅ | Lee tarjetas, valida usuario, asigna espacio |
+| **RFID Salida** | ✅ | Lee tarjetas, valida acceso activo, libera espacio |
+| **Asignación Espacios** | ✅ | Algoritmo Dijkstra - espacio más cercano |
+| **Detección Ocupación** | ✅ | Sensores IR detectan ocupación ilegal |
+| **Historial** | ✅ | Registro con hora entrada/salida exacta |
+| **Admin - CRUD Usuarios** | ✅ | Crear, leer, editar, eliminar usuarios |
+| **Vigilante - Ver Datos** | ✅ | Tabla de usuarios con historial por usuario |
+| **Advertencias** | ✅ | Sistema de escalation (3 advertencias → multa) |
+| **Multas** | ✅ | Generación automática tras 3 advertencias |
+| **Base de Datos** | ✅ | SQLite con 7 tablas normalizadas |
+| **API Endpoints** | ✅ | 20+ endpoints REST documentados |
 
-Para reportar bugs o sugerencias, crea un issue en el repositorio.
+### PENDIENTE
+
+| Funcionalidad | Requisito | Prioridad |
+|---------------|-----------|-----------|
+| **Servomotor/Pluma** | Módulo relay 2 canales | ALTA |
+| **Notificaciones Real-Time** | WebSocket o polling optimizado | MEDIA |
+| **Boleto Digital** | Frontend usuario_page | MEDIA |
 
 ---
 
-**Última actualización**: Noviembre 2025
+**Archivos clave para entender:**
+- `Backend/Modulos/asignador.py` - Algoritmo Dijkstra (solo 250 líneas, muy legible)
+- `Backend/BaseDatos/bd.py` - Todas las queries SQL (bien documentadas)
+- `Scripts/lector_rfid_backend.py` - Lectura paralela de 2 puertos (threading)
+- `Frontend/pages/vigilante_page.py` - UI más compleja pero bien estructurada
+
+---
+
+**Última actualización**: Noviembre 2025 | **Versión**: 0.0.6 
