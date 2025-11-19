@@ -59,6 +59,15 @@ def registrar_entrada(datos: dict = Body(...)):
             "codigo_error": "USUARIO_NO_EXISTE"
         }
     
+    # VALIDACIÓN: Verificar vigencia y pago
+    validacion = bd.validar_usuario_activo(str(id_usuario))
+    if not validacion.get("valido"):
+        return {
+            "success": False,
+            "mensaje": f"❌ {validacion.get('razon', 'Usuario no válido')}",
+            "codigo_error": "USUARIO_NO_VIGENTE"
+        }
+    
     # VALIDACIÓN: Verificar si el usuario ya tiene un acceso activo
     acceso_activo = bd.verificar_acceso_activo(str(id_usuario))
     if acceso_activo.get("tiene_acceso_activo"):
@@ -229,6 +238,28 @@ def eliminar_usuario(usuario_id: str):
     """Eliminar un usuario y todos sus datos asociados (Administrador)"""
     return bd.delete_usuario(usuario_id)
 
+@app.get("/usuarios/{usuario_id}/validar")
+def validar_usuario(usuario_id: str):
+    """Validar si un usuario está vigente y pagado"""
+    return bd.validar_usuario_activo(usuario_id)
+
+# =====================================================
+# ENDPOINTS AUTOS
+# =====================================================
+
+@app.post("/autos")
+def registrar_auto(datos: dict = Body(...)):
+    """Registrar un nuevo auto para un usuario (Administrador)"""
+    usuario_id = datos.get("usuario_id")
+    placa = datos.get("placa")
+    marca = datos.get("marca")
+    modelo = datos.get("modelo")
+    
+    if not all([usuario_id, placa, marca, modelo]):
+        raise HTTPException(status_code=400, detail="Faltan campos obligatorios (usuario_id, placa, marca, modelo)")
+    
+    return bd.insertar_auto(usuario_id, placa, marca, modelo)
+
 # =====================================================
 # ENDPOINTS ACCESOS MANUALES (tarjeta digital)
 # =====================================================
@@ -239,6 +270,15 @@ def registrar_entrada_manual(datos: dict = Body(...)):
     id_usuario = datos.get("id_usuario")
     if not id_usuario:
         raise HTTPException(status_code=400, detail="Falta id_usuario")
+    
+    # VALIDACIÓN: Verificar vigencia y pago
+    validacion = bd.validar_usuario_activo(str(id_usuario))
+    if not validacion.get("valido"):
+        return {
+            "success": False,
+            "mensaje": f"❌ {validacion.get('razon', 'Usuario no válido')}"
+        }
+    
     # Validar límite mensual (3)
     usos = bd.contar_accesos_manuales_mes(id_usuario)
     if usos >= 3:
@@ -252,6 +292,15 @@ def registrar_salida_manual(datos: dict = Body(...)):
     id_usuario = datos.get("id_usuario")
     if not id_usuario:
         raise HTTPException(status_code=400, detail="Falta id_usuario")
+    
+    # VALIDACIÓN: Verificar vigencia y pago
+    validacion = bd.validar_usuario_activo(str(id_usuario))
+    if not validacion.get("valido"):
+        return {
+            "success": False,
+            "mensaje": f"❌ {validacion.get('razon', 'Usuario no válido')}"
+        }
+    
     bd.registrar_acceso_manual(id_usuario, "salida")
     return {"success": True, "mensaje": "Salida manual registrada"}
 

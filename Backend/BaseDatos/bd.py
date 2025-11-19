@@ -167,7 +167,9 @@ def inicializar_bd():
         matrUsuario INTEGER,
         celular TEXT,
         placa1 TEXT,
-        placa2 TEXT
+        placa2 TEXT,
+        vigencia DATE,
+        pagado INTEGER DEFAULT 1
     )
     """)
     
@@ -505,15 +507,17 @@ def insert_usuario(usuario):
     cursor = conexion.cursor()
     try:
         cursor.execute("""
-            INSERT INTO usuarios (idUsuario, nomUsuario, matrUsuario, celular, placa1, placa2)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO usuarios (idUsuario, nomUsuario, matrUsuario, celular, placa1, placa2, vigencia, pagado)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             usuario["idUsuario"],
             usuario["nombre"],
             usuario.get("matricula", "N/A"),
             usuario.get("celular", "N/A"),
             "",  # placa1 vacía al inicio
-            ""   # placa2 vacía al inicio
+            "",  # placa2 vacía al inicio
+            usuario.get("vigencia", "2025-12-31"),  # vigencia
+            int(usuario.get("pago", 1))  # pagado (1=sí, 0=no)
         ))
         conexion.commit()
         conexion.close()
@@ -656,6 +660,14 @@ def update_usuario(usuario_id, datos_actualizados):
         campos.append("placa2 = ?")
         valores.append(datos_actualizados["placa2"])
     
+    if "vigencia" in datos_actualizados:
+        campos.append("vigencia = ?")
+        valores.append(datos_actualizados["vigencia"])
+    
+    if "pagado" in datos_actualizados:
+        campos.append("pagado = ?")
+        valores.append(int(datos_actualizados["pagado"]))
+    
     if not campos:
         conexion.close()
         return {"mensaje": "No hay campos para actualizar"}
@@ -698,6 +710,97 @@ def delete_usuario(usuario_id):
         conexion.close()
         return {"error": f"Error al eliminar usuario: {str(e)}"}
 
+
+# =====================================================
+# FUNCIONES DE AUTOS
+# =====================================================
+
+def insertar_auto(usuario_id, placa, marca, modelo):
+    """Registrar un nuevo auto para un usuario"""
+    conexion = conectar()
+    cursor = conexion.cursor()
+    
+    try:
+        # Verificar que el usuario existe
+        cursor.execute("SELECT idUsuario FROM usuarios WHERE idUsuario = ?", (usuario_id,))
+        if not cursor.fetchone():
+            conexion.close()
+            return {"error": "Usuario no encontrado"}
+        
+        cursor.execute("""
+            INSERT INTO autos (usuario_id, placa, marca, modelo)
+            VALUES (?, ?, ?, ?)
+        """, (usuario_id, placa.upper(), marca, modelo))
+        conexion.commit()
+        conexion.close()
+        
+        return {
+            "mensaje": f"Auto {placa} registrado correctamente para el usuario {usuario_id}",
+            "placa": placa,
+            "marca": marca,
+            "modelo": modelo
+        }
+    except Exception as e:
+        conexion.rollback()
+        conexion.close()
+        return {"error": f"Error al registrar auto: {str(e)}"}
+
+
+# =====================================================
+# FUNCIONES DE VALIDACIÓN DE USUARIO (VIGENCIA Y PAGO)
+# =====================================================
+
+def validar_usuario_activo(usuario_id):
+    """Valida si un usuario está vigente y pagado"""
+    conexion = conectar()
+    cursor = conexion.cursor()
+    
+    try:
+        cursor.execute("""
+            SELECT vigencia, pagado FROM usuarios WHERE idUsuario = ?
+        """, (usuario_id,))
+        resultado = cursor.fetchone()
+        conexion.close()
+        
+        if not resultado:
+            return {
+                "valido": False,
+                "razon": "Usuario no encontrado"
+            }
+        
+        vigencia, pagado = resultado
+        hoy = datetime.now().date()
+        
+        # Verificar vigencia
+        if vigencia:
+            try:
+                fecha_vigencia = datetime.strptime(vigencia, "%Y-%m-%d").date()
+                if hoy > fecha_vigencia:
+                    return {
+                        "valido": False,
+                        "razon": f"Usuario vencido desde {vigencia}"
+                    }
+            except:
+                pass
+        
+        # Verificar pago
+        if pagado == 0:
+            return {
+                "valido": False,
+                "razon": "Usuario con pago pendiente"
+            }
+        
+        return {
+            "valido": True,
+            "razon": "Usuario activo y pagado"
+        }
+        
+    except Exception as e:
+        conexion.close()
+        return {
+            "valido": False,
+            "razon": f"Error al validar usuario: {str(e)}"
+        }
 
 # =====================================================
 # FUNCIONES DE LOGIN Y AUTENTICACIÓN

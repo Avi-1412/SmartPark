@@ -282,9 +282,13 @@ def vigilante_view(page: ft.Page, API_URL: str):
             
             panel = ft.Container(
                 content=ft.Column([
-                    ft.Text("DATOS DE USUARIOS", size=20, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_900),
+                    ft.Row([
+                        ft.ElevatedButton("VOLVER", on_click=lambda _: vigilante_view(page, API_URL), bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, width=100, height=40),
+                        ft.Text("DATOS DE USUARIOS", size=18, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_900, expand=True, text_align=ft.TextAlign.CENTER),
+                        ft.Container(width=100),
+                    ], spacing=10, alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                    ft.Divider(height=15),
                     ft.Container(content=tabla, expand=True),
-                    ft.ElevatedButton("← Volver al Panel", on_click=lambda _: vigilante_view(page, API_URL), expand=True, height=40),
                 ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=15, expand=True, scroll=ft.ScrollMode.AUTO),
                 padding=20,
                 expand=True,
@@ -299,18 +303,18 @@ def vigilante_view(page: ft.Page, API_URL: str):
             page.update()
 
     def registrar_acceso_manual(tipo):
-        """Diálogo para registrar entrada o salida manual por ID de usuario"""
-        id_input = ft.TextField(label="ID de usuario", expand=True, keyboard_type=ft.KeyboardType.NUMBER)
+        """Registrar entrada o salida manual"""
+        page.clean()
         
-        user_data = {"existe": False, "datos": {}}
+        id_input = ft.TextField(label="ID de usuario", width=300, keyboard_type=ft.KeyboardType.NUMBER)
         
-        nombre_display = ft.Text("", size=12, color=ft.Colors.BLUE_GREY_700)
-        celular_display = ft.Text("", size=12, color=ft.Colors.BLUE_GREY_700)
-        vehiculos_display = ft.Text("", size=11, color=ft.Colors.BLUE_GREY_700)
-        usos_restantes = ft.Text("", size=12, color=ft.Colors.BLUE_GREY_700)
-        estado_entrada = ft.Text("", size=12, color=ft.Colors.ORANGE_700, weight=ft.FontWeight.BOLD)
+        nombre_display = ft.Text("", size=13, weight=ft.FontWeight.BOLD)
+        celular_display = ft.Text("", size=12)
+        vehiculos_display = ft.Text("", size=12)
+        usos_restantes = ft.Text("", size=12)
+        estado_entrada = ft.Text("", size=12, weight=ft.FontWeight.BOLD)
         resultado = ft.Text("", size=12, weight=ft.FontWeight.BOLD)
-        btn_registrar = ft.ElevatedButton(f"Registrar {tipo.upper()}", disabled=True, expand=True, height=40)
+        btn_registrar = ft.ElevatedButton(f"REGISTRAR {tipo.upper()}", disabled=True, height=45, width=300, bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE)
         
         contenedor_datos = ft.Container(
             content=ft.Column([
@@ -319,53 +323,39 @@ def vigilante_view(page: ft.Page, API_URL: str):
                 vehiculos_display,
                 usos_restantes,
                 estado_entrada,
-            ], spacing=4),
+            ], spacing=8),
             visible=False,
             bgcolor=ft.Colors.BLUE_GREY_100,
-            padding=10,
+            padding=15,
             border_radius=8
         )
 
         def buscar_usuario(_):
-            """Busca el usuario en la BD y muestra sus datos"""
+            """Busca el usuario en la BD"""
             user_id = id_input.value.strip()
             resultado.value = ""
             btn_registrar.disabled = True
             contenedor_datos.visible = False
-            user_data["existe"] = False
             
             if not user_id or not user_id.isdigit():
-                resultado.value = "⚠️ Ingresa un ID válido"
+                resultado.value = "Ingresa un ID válido"
                 page.update()
                 return
             
             try:
                 r = requests.get(f"{API_URL}/usuarios/{user_id}", timeout=5)
-                
                 if r.status_code != 200:
-                    resultado.value = "❌ Usuario no encontrado en la BD"
+                    resultado.value = "Usuario no encontrado"
                     page.update()
                     return
                 
                 usuario = r.json()
-                
-                if not usuario.get("nomUsuario"):
-                    resultado.value = "❌ Usuario sin datos completos"
-                    page.update()
-                    return
-                
-                user_data["datos"] = usuario
-                user_data["existe"] = True
-                
-                nombre_display.value = f"👤 Nombre: {usuario.get('nomUsuario', 'N/A')}"
-                celular_display.value = f"📱 Celular: {usuario.get('celular', 'N/A')}"
+                nombre_display.value = f"Nombre: {usuario.get('nomUsuario', 'N/A')}"
+                celular_display.value = f"Celular: {usuario.get('celular', 'N/A')}"
                 
                 autos = usuario.get("autos", [])
-                if autos:
-                    autos_str = ", ".join([f"{a.get('marca')} {a.get('modelo')} ({a.get('placa')})" for a in autos])
-                    vehiculos_display.value = f"🚗 Vehículos: {autos_str}"
-                else:
-                    vehiculos_display.value = "🚗 Vehículos: Sin registrar"
+                autos_text = ", ".join([f"{a.get('marca')} {a.get('modelo')}" for a in autos]) if autos else "Sin registrar"
+                vehiculos_display.value = f"Vehículos: {autos_text}"
                 
                 r_accesos = requests.get(f"{API_URL}/acceso/manuales/{user_id}", timeout=5)
                 data_accesos = r_accesos.json()
@@ -376,256 +366,167 @@ def vigilante_view(page: ft.Page, API_URL: str):
                 
                 if tipo == "entrada":
                     if entrada_activa:
-                        estado_entrada.value = "🚨 Este usuario tiene una ENTRADA ACTIVA sin salida correspondiente"
-                        usos_restantes.value = "❌ Debe registrar salida primero"
+                        estado_entrada.value = "Entrada activa sin salida registrada"
+                        resultado.value = "Debe registrar salida primero"
                         btn_registrar.disabled = True
-                        resultado.value = "❌ Operación bloqueada: hay entrada activa sin salida"
                     else:
                         usos = data_accesos.get("usos_mes", 0)
                         limite = data_accesos.get("limite", 3)
-                        usos_restantes.value = f"📊 Entradas manuales: {usos}/{limite} usadas este mes"
-                        estado_entrada.value = ""
-                        
+                        usos_restantes.value = f"Entradas manuales: {usos}/{limite} usadas este mes"
                         if usos >= limite:
-                            resultado.value = f"❌ Límite de {limite} entradas manuales alcanzado"
+                            resultado.value = f"Límite de {limite} entradas alcanzado"
                             btn_registrar.disabled = True
                         else:
-                            resultado.value = f"✅ Usuario verificado. Accesos restantes: {limite - usos}"
+                            resultado.value = f"Usuario verificado. Accesos restantes: {limite - usos}"
                             btn_registrar.disabled = False
                 else:
                     if not entrada_activa:
-                        estado_entrada.value = "❌ No hay ENTRADA ACTIVA para este usuario"
-                        usos_restantes.value = ""
+                        estado_entrada.value = "No hay entrada activa"
+                        resultado.value = "No se puede registrar salida sin entrada"
                         btn_registrar.disabled = True
-                        resultado.value = "❌ No se puede registrar salida sin entrada previa"
                     else:
-                        estado_entrada.value = "✅ Hay una ENTRADA ACTIVA - Puedes registrar salida"
-                        usos_restantes.value = ""
-                        resultado.value = "✅ Usuario verificado"
+                        estado_entrada.value = "Entrada activa disponible"
+                        resultado.value = "Usuario verificado"
                         btn_registrar.disabled = False
                 
                 contenedor_datos.visible = True
-                    
-            except requests.exceptions.Timeout:
-                resultado.value = "❌ Tiempo de conexión agotado"
-            except requests.exceptions.ConnectionError:
-                resultado.value = "❌ No se puede conectar al servidor"
             except Exception as ex:
-                resultado.value = f"❌ Error inesperado"
+                resultado.value = f"Error: {ex}"
             
             page.update()
 
         def registrar(_):
-            """Registra la entrada o salida manual"""
-            if not user_data["existe"]:
-                resultado.value = "❌ Debe verificar usuario primero"
+            """Registra entrada o salida"""
+            user_id = id_input.value.strip()
+            if not user_id:
+                resultado.value = "Verifica usuario primero"
                 page.update()
                 return
             
-            user_id = id_input.value.strip()
             try:
-                endpoint = f"/acceso/manual/{tipo}"
-                r = requests.post(f"{API_URL}{endpoint}", json={"id_usuario": int(user_id)})
+                r = requests.post(f"{API_URL}/acceso/manual/{tipo}", json={"id_usuario": int(user_id)})
                 data = r.json()
                 
                 if data.get("success"):
-                    resultado.value = f"✅ {data.get('mensaje', 'Acceso registrado correctamente')}"
+                    resultado.value = f"✅ {data.get('mensaje', 'Acceso registrado')}"
                     id_input.value = ""
                     contenedor_datos.visible = False
                 else:
-                    resultado.value = f"❌ {data.get('mensaje', 'Error al registrar')}"
-                    
+                    resultado.value = f"❌ {data.get('mensaje', 'Error')}"
             except Exception as ex:
-                resultado.value = f"❌ Error: {ex}"
+                resultado.value = f"Error: {ex}"
             page.update()
 
         id_input.on_change = buscar_usuario
         btn_registrar.on_click = registrar
 
-        dialog = ft.AlertDialog(
-            modal=True,
-            title=ft.Text(f"Registrar {tipo.capitalize()} Manual", size=16, weight=ft.FontWeight.BOLD),
+        panel = ft.Container(
             content=ft.Column([
-                ft.Text("Ingresa el ID del usuario:", size=12, weight=ft.FontWeight.W_600),
+                ft.Row([
+                    ft.ElevatedButton("VOLVER", on_click=lambda _: vigilante_view(page, API_URL), bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, width=100, height=40),
+                    ft.Text(f"REGISTRAR {tipo.upper()} MANUAL", size=18, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_900, expand=True, text_align=ft.TextAlign.CENTER),
+                    ft.Container(width=100),
+                ], spacing=10, alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                ft.Divider(height=15),
+                ft.Text("ID de usuario:", size=13, weight=ft.FontWeight.BOLD),
                 id_input,
                 ft.Divider(height=10),
                 contenedor_datos,
                 ft.Divider(height=10),
-                btn_registrar,
+                ft.Container(btn_registrar, alignment=ft.alignment.center),
                 ft.Divider(height=10),
-                resultado
-            ], spacing=6, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
-            actions=[
-                ft.TextButton("Cerrar", on_click=lambda _: cerrar_dialogo()),
-            ],
-            actions_alignment=ft.MainAxisAlignment.END,
+                ft.Container(resultado, alignment=ft.alignment.center),
+            ], spacing=10, horizontal_alignment=ft.CrossAxisAlignment.CENTER, expand=True, scroll=ft.ScrollMode.AUTO),
+            padding=20,
+            expand=True,
+            bgcolor=ft.Colors.GREY_200,
+            border_radius=6,
+            shadow=ft.BoxShadow(blur_radius=10, color=ft.Colors.BLUE_GREY_100),
         )
-
-        def cerrar_dialogo():
-            dialog.open = False
-            page.update()
-
-        if dialog not in page.overlay:
-            page.overlay.append(dialog)
-        dialog.open = True
-        page.update()
+        
+        page.add(panel)
 
     def enviar_advertencia(e):
-        """Diálogo para enviar una advertencia a un usuario"""
-        id_input = ft.TextField(label="ID de usuario", expand=True, keyboard_type=ft.KeyboardType.NUMBER)
-        id_historial_input = ft.TextField(label="ID de entrada (historial)", expand=True, keyboard_type=ft.KeyboardType.NUMBER)
+        """Enviar advertencia a un usuario"""
+        page.clean()
         
-        user_data = {"existe": False, "datos": {}}
+        id_input = ft.TextField(label="ID de usuario", width=300, keyboard_type=ft.KeyboardType.NUMBER)
+        id_historial_input = ft.TextField(label="ID de entrada (historial)", width=300, keyboard_type=ft.KeyboardType.NUMBER)
         
-        nombre_display = ft.Text("", size=12, color=ft.Colors.BLUE_GREY_700)
-        celular_display = ft.Text("", size=12, color=ft.Colors.BLUE_GREY_700)
-        advertencias_display = ft.Text("", size=12, color=ft.Colors.BLUE_GREY_700)
-        ids_disponibles = ft.Text("", size=11, color=ft.Colors.BLUE_900, weight=ft.FontWeight.BOLD)
+        nombre_display = ft.Text("", size=13, weight=ft.FontWeight.BOLD)
+        advertencias_display = ft.Text("", size=12, weight=ft.FontWeight.BOLD)
+        ids_disponibles = ft.Text("", size=11)
         resultado = ft.Text("", size=12, weight=ft.FontWeight.BOLD)
-        btn_enviar = ft.ElevatedButton("ENVIAR ADVERTENCIA", disabled=True, expand=True, height=40)
+        btn_enviar = ft.ElevatedButton("ENVIAR ADVERTENCIA", disabled=True, height=45, width=300, bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE)
         
         contenedor_datos = ft.Container(
             content=ft.Column([
                 nombre_display,
-                celular_display,
                 ids_disponibles,
                 advertencias_display,
-            ], spacing=4),
+            ], spacing=8),
             visible=False,
             bgcolor=ft.Colors.BLUE_GREY_100,
-            padding=10,
+            padding=15,
             border_radius=8
         )
 
-        def buscar_usuario_para_entrada(_):
-            """Busca el usuario y muestra sus IDs de entrada disponibles"""
-            user_id = id_input.value.strip()
-            resultado.value = ""
-            ids_disponibles.value = ""
-            btn_enviar.disabled = True
-            contenedor_datos.visible = False
-            user_data["existe"] = False
-            
-            if not user_id or not user_id.isdigit():
-                resultado.value = "⚠️ Ingresa un ID válido"
-                page.update()
-                return
-            
-            try:
-                # Obtener datos del usuario
-                r = requests.get(f"{API_URL}/usuarios/{user_id}", timeout=5)
-                
-                if r.status_code != 200:
-                    resultado.value = "❌ Usuario no encontrado"
-                    page.update()
-                    return
-                
-                usuario = r.json()
-                
-                if not usuario.get("nomUsuario"):
-                    resultado.value = "❌ Usuario sin datos completos"
-                    page.update()
-                    return
-                
-                user_data["datos"] = usuario
-                
-                nombre_display.value = f"👤 Nombre: {usuario.get('nomUsuario', 'N/A')}"
-                celular_display.value = f"📱 Celular: {usuario.get('celular', 'N/A')}"
-                
-                # Obtener IDs de historial disponibles
-                r_ids = requests.get(f"{API_URL}/historial/usuario/{user_id}/ids", timeout=5)
-                data_ids = r_ids.json()
-                ids_list = data_ids.get("ids", [])
-                
-                if not ids_list:
-                    resultado.value = "❌ Este usuario no tiene entradas registradas"
-                    contenedor_datos.visible = True
-                    page.update()
-                    return
-                
-                # Mostrar IDs disponibles
-                ids_text = "📋 IDs de entrada disponibles: " + ", ".join([str(h["id"]) for h in ids_list])
-                ids_disponibles.value = ids_text
-                
-                resultado.value = f"✅ Usuario encontrado ({len(ids_list)} entradas disponibles)"
-                contenedor_datos.visible = True
-                    
-            except Exception as ex:
-                resultado.value = f"❌ Error: {ex}"
-            
-            page.update()
-
         def buscar_usuario_y_entrada(_):
-            """Busca el usuario y valida la entrada específica"""
+            """Valida usuario e entrada"""
             user_id = id_input.value.strip()
             id_hist = id_historial_input.value.strip()
             resultado.value = ""
             btn_enviar.disabled = True
-            user_data["existe"] = False
+            contenedor_datos.visible = False
             
-            if not user_id or not user_id.isdigit():
-                resultado.value = "⚠️ Ingresa un ID válido"
-                page.update()
-                return
-            
-            if not id_hist or not id_hist.isdigit():
-                resultado.value = "⚠️ Ingresa ID de entrada válido"
+            if not user_id or not user_id.isdigit() or not id_hist or not id_hist.isdigit():
+                resultado.value = "Completa ID usuario e ID entrada"
                 page.update()
                 return
             
             try:
                 r = requests.get(f"{API_URL}/usuarios/{user_id}", timeout=5)
-                
                 if r.status_code != 200:
-                    resultado.value = "❌ Usuario no encontrado"
+                    resultado.value = "Usuario no encontrado"
                     page.update()
                     return
                 
                 usuario = r.json()
                 
-                if not usuario.get("nomUsuario"):
-                    resultado.value = "❌ Usuario sin datos"
-                    page.update()
-                    return
-                
-                # Validar que el ID de historial existe
+                # Validar entrada
                 r_historial = requests.get(f"{API_URL}/historial/validar/{user_id}/{id_hist}", timeout=5)
                 data_historial = r_historial.json()
                 
                 if not data_historial.get("valido"):
-                    resultado.value = f"❌ {data_historial.get('mensaje', 'Entrada no válida')}"
+                    resultado.value = f"Entrada no válida"
                     page.update()
                     return
                 
-                user_data["datos"] = usuario
-                user_data["existe"] = True
-                
-                nombre_display.value = f"👤 Nombre: {usuario.get('nomUsuario', 'N/A')}"
-                celular_display.value = f"📱 Celular: {usuario.get('celular', 'N/A')}"
+                nombre_display.value = f"Usuario: {usuario.get('nomUsuario', 'N/A')}"
                 
                 r_adv = requests.get(f"{API_URL}/advertencias/entrada/{user_id}/{id_hist}", timeout=5)
                 data_adv = r_adv.json()
                 adv_entrada = data_adv.get("advertencias", 0)
-                advertencias_display.value = f"⚠️ Advertencias en esta entrada: {adv_entrada}/3"
+                advertencias_display.value = f"Advertencias en esta entrada: {adv_entrada}/3"
                 
-                resultado.value = "✅ Usuario y entrada validados"
+                resultado.value = "Usuario y entrada validados"
                 btn_enviar.disabled = False
                 contenedor_datos.visible = True
                     
             except Exception as ex:
-                resultado.value = f"❌ Error: {ex}"
+                resultado.value = f"Error: {ex}"
             
             page.update()
 
         def enviar(_):
             """Envía la advertencia"""
-            if not user_data["existe"]:
-                resultado.value = "❌ Busca un usuario primero"
+            user_id = id_input.value.strip()
+            id_hist = id_historial_input.value.strip()
+            if not user_id or not id_hist:
+                resultado.value = "Verifica usuario e entrada primero"
                 page.update()
                 return
             
-            user_id = id_input.value.strip()
-            id_hist = id_historial_input.value.strip()
             try:
                 r = requests.post(f"{API_URL}/advertencias", json={
                     "id_usuario": int(user_id), 
@@ -638,69 +539,67 @@ def vigilante_view(page: ft.Page, API_URL: str):
                     adv_count = data.get("advertencias_entrada", 0)
                     resultado.value = f"✅ Advertencia enviada ({adv_count}/3)"
                     if adv_count >= 3:
-                        resultado.value += " - ⚠️ PUEDE ENVIAR MULTA"
+                        resultado.value += " - Puede enviar multa"
                 else:
-                    resultado.value = f"❌ {data.get('mensaje', 'Error')}"
+                    resultado.value = f"Error: {data.get('mensaje', 'Error')}"
                     
             except Exception as ex:
-                resultado.value = f"❌ Error: {ex}"
+                resultado.value = f"Error: {ex}"
             page.update()
 
-        id_input.on_change = buscar_usuario_para_entrada
+        id_input.on_change = buscar_usuario_y_entrada
         id_historial_input.on_change = buscar_usuario_y_entrada
         btn_enviar.on_click = enviar
 
-        dialog = ft.AlertDialog(
-            modal=True,
-            title=ft.Text("Enviar Advertencia", size=16, weight=ft.FontWeight.BOLD),
+        panel = ft.Container(
             content=ft.Column([
-                ft.Text("Ingresa el ID del usuario:", size=12, weight=ft.FontWeight.W_600),
+                ft.Row([
+                    ft.ElevatedButton("VOLVER", on_click=lambda _: vigilante_view(page, API_URL), bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, width=100, height=40),
+                    ft.Text("ENVIAR ADVERTENCIA", size=18, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_900, expand=True, text_align=ft.TextAlign.CENTER),
+                    ft.Container(width=100),
+                ], spacing=10, alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                ft.Divider(height=15),
+                ft.Text("ID de usuario:", size=13, weight=ft.FontWeight.BOLD),
                 id_input,
-                ft.Text("Ingresa el ID de la entrada (historial):", size=12, weight=ft.FontWeight.W_600),
+                ft.Text("ID de entrada:", size=13, weight=ft.FontWeight.BOLD),
                 id_historial_input,
                 ft.Divider(height=10),
                 contenedor_datos,
                 ft.Divider(height=10),
-                btn_enviar,
+                ft.Container(btn_enviar, alignment=ft.alignment.center),
                 ft.Divider(height=10),
-                resultado
-            ], spacing=6, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
-            actions=[
-                ft.TextButton("Cerrar", on_click=lambda _: cerrar_dialogo()),
-            ],
-            actions_alignment=ft.MainAxisAlignment.END,
+                ft.Container(resultado, alignment=ft.alignment.center),
+            ], spacing=10, horizontal_alignment=ft.CrossAxisAlignment.CENTER, expand=True, scroll=ft.ScrollMode.AUTO),
+            padding=20,
+            expand=True,
+            bgcolor=ft.Colors.GREY_200,
+            border_radius=6,
+            shadow=ft.BoxShadow(blur_radius=10, color=ft.Colors.BLUE_GREY_100),
         )
-
-        def cerrar_dialogo():
-            dialog.open = False
-            page.update()
-
-        if dialog not in page.overlay:
-            page.overlay.append(dialog)
-        dialog.open = True
-        page.update()
+        
+        page.add(panel)
 
     def enviar_multa(e):
-        """Diálogo para enviar una multa (después de 3 advertencias)"""
-        id_input = ft.TextField(label="ID de usuario", expand=True, keyboard_type=ft.KeyboardType.NUMBER)
-        id_historial_input = ft.TextField(label="ID de entrada (historial)", expand=True, keyboard_type=ft.KeyboardType.NUMBER)
-        monto_input = ft.TextField(label="Monto ($)", expand=True, value="50.0", keyboard_type=ft.KeyboardType.NUMBER)
+        """Enviar multa a un usuario"""
+        page.clean()
         
-        user_data = {"existe": False}
+        id_input = ft.TextField(label="ID de usuario", width=300, keyboard_type=ft.KeyboardType.NUMBER)
+        id_historial_input = ft.TextField(label="ID de entrada (historial)", width=300, keyboard_type=ft.KeyboardType.NUMBER)
+        monto_input = ft.TextField(label="Monto ($)", width=300, value="50.0", keyboard_type=ft.KeyboardType.NUMBER)
         
-        nombre_display = ft.Text("", size=12, color=ft.Colors.BLUE_GREY_700)
-        advertencias_display = ft.Text("", size=12, color=ft.Colors.RED_700, weight=ft.FontWeight.BOLD)
+        nombre_display = ft.Text("", size=13, weight=ft.FontWeight.BOLD)
+        advertencias_display = ft.Text("", size=12, weight=ft.FontWeight.BOLD, color=ft.Colors.RED_700)
         resultado = ft.Text("", size=12, weight=ft.FontWeight.BOLD)
-        btn_enviar = ft.ElevatedButton("ENVIAR MULTA", disabled=True, expand=True, height=40, bgcolor=ft.Colors.RED_900)
+        btn_enviar = ft.ElevatedButton("ENVIAR MULTA", disabled=True, height=45, width=300, bgcolor=ft.Colors.RED_900, color=ft.Colors.WHITE)
         
         contenedor_datos = ft.Container(
             content=ft.Column([
                 nombre_display,
                 advertencias_display,
-            ], spacing=4),
+            ], spacing=8),
             visible=False,
             bgcolor=ft.Colors.RED_100,
-            padding=10,
+            padding=15,
             border_radius=8
         )
 
@@ -711,61 +610,60 @@ def vigilante_view(page: ft.Page, API_URL: str):
             resultado.value = ""
             btn_enviar.disabled = True
             contenedor_datos.visible = False
-            user_data["existe"] = False
             
             if not user_id or not user_id.isdigit() or not id_hist or not id_hist.isdigit():
-                resultado.value = "⚠️ Completa ID usuario e ID entrada"
+                resultado.value = "Completa ID usuario e ID entrada"
                 page.update()
                 return
             
             try:
                 r = requests.get(f"{API_URL}/usuarios/{user_id}", timeout=5)
                 if r.status_code != 200:
-                    resultado.value = "❌ Usuario no encontrado"
+                    resultado.value = "Usuario no encontrado"
                     page.update()
                     return
                 
-                # Validar que el ID de historial existe
+                # Validar entrada
                 r_historial = requests.get(f"{API_URL}/historial/validar/{user_id}/{id_hist}", timeout=5)
                 data_historial = r_historial.json()
                 
                 if not data_historial.get("valido"):
-                    resultado.value = f"❌ {data_historial.get('mensaje', 'Entrada no válida')}"
+                    resultado.value = "Entrada no válida"
                     page.update()
                     return
                 
                 usuario = r.json()
-                nombre_display.value = f"👤 {usuario.get('nomUsuario', 'N/A')}"
+                nombre_display.value = f"Usuario: {usuario.get('nomUsuario', 'N/A')}"
                 
                 r_adv = requests.get(f"{API_URL}/advertencias/entrada/{user_id}/{id_hist}", timeout=5)
                 data_adv = r_adv.json()
                 adv_count = data_adv.get("advertencias", 0)
                 
                 if adv_count < 3:
-                    advertencias_display.value = f"⚠️ Solo {adv_count}/3 advertencias - NO PUEDE MULTAR"
+                    advertencias_display.value = f"Solo {adv_count}/3 advertencias - NO PUEDE MULTAR"
                     btn_enviar.disabled = True
+                    resultado.value = "Se requieren 3 advertencias para multar"
                 else:
-                    advertencias_display.value = f"🚨 {adv_count} ADVERTENCIAS - MULTA HABILITADA"
+                    advertencias_display.value = f"{adv_count} ADVERTENCIAS - MULTA HABILITADA"
                     btn_enviar.disabled = False
+                    resultado.value = "Usuario y entrada validados"
                 
-                user_data["existe"] = True
-                resultado.value = "✅ Usuario y entrada validados"
                 contenedor_datos.visible = True
                     
             except Exception as ex:
-                resultado.value = f"❌ Error: {ex}"
+                resultado.value = f"Error: {ex}"
             
             page.update()
 
         def enviar(_):
             """Envía la multa"""
-            if not user_data["existe"]:
-                resultado.value = "❌ Busca usuario primero"
+            user_id = id_input.value.strip()
+            id_hist = id_historial_input.value.strip()
+            if not user_id or not id_hist:
+                resultado.value = "Verifica usuario e entrada primero"
                 page.update()
                 return
             
-            user_id = id_input.value.strip()
-            id_hist = id_historial_input.value.strip()
             try:
                 monto = float(monto_input.value) if monto_input.value else 50.0
                 r = requests.post(f"{API_URL}/multas", json={
@@ -780,159 +678,121 @@ def vigilante_view(page: ft.Page, API_URL: str):
                     resultado.value = f"✅ Multa de ${monto} registrada"
                     btn_enviar.disabled = True
                 else:
-                    resultado.value = f"❌ {data.get('mensaje', 'Error')}"
+                    resultado.value = f"Error: {data.get('mensaje', 'Error')}"
                     
             except ValueError:
-                resultado.value = "❌ Monto inválido"
+                resultado.value = "Monto inválido"
             except Exception as ex:
-                resultado.value = f"❌ Error: {ex}"
+                resultado.value = f"Error: {ex}"
             page.update()
 
         id_input.on_change = buscar_usuario
         id_historial_input.on_change = buscar_usuario
         btn_enviar.on_click = enviar
 
-        dialog = ft.AlertDialog(
-            modal=True,
-            title=ft.Text("Enviar Multa", size=16, weight=ft.FontWeight.BOLD),
+        panel = ft.Container(
             content=ft.Column([
-                ft.Text("ID usuario:", size=12, weight=ft.FontWeight.W_600),
+                ft.Row([
+                    ft.ElevatedButton("VOLVER", on_click=lambda _: vigilante_view(page, API_URL), bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, width=100, height=40),
+                    ft.Text("ENVIAR MULTA", size=18, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_900, expand=True, text_align=ft.TextAlign.CENTER),
+                    ft.Container(width=100),
+                ], spacing=10, alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                ft.Divider(height=15),
+                ft.Text("ID de usuario:", size=13, weight=ft.FontWeight.BOLD),
                 id_input,
-                ft.Text("ID entrada:", size=12, weight=ft.FontWeight.W_600),
+                ft.Text("ID de entrada:", size=13, weight=ft.FontWeight.BOLD),
                 id_historial_input,
                 ft.Divider(height=10),
                 contenedor_datos,
                 ft.Divider(height=10),
-                ft.Text("Monto:", size=12, weight=ft.FontWeight.W_600),
+                ft.Text("Monto de la multa ($):", size=13, weight=ft.FontWeight.BOLD),
                 monto_input,
                 ft.Divider(height=10),
-                btn_enviar,
+                ft.Container(btn_enviar, alignment=ft.alignment.center),
                 ft.Divider(height=10),
-                resultado
-            ], spacing=6, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
-            actions=[
-                ft.TextButton("Cerrar", on_click=lambda _: cerrar_dialogo()),
-            ],
-            actions_alignment=ft.MainAxisAlignment.END,
-        )
-
-        def cerrar_dialogo():
-            dialog.open = False
-            page.update()
-
-        if dialog not in page.overlay:
-            page.overlay.append(dialog)
-        dialog.open = True
-        page.update()
-
-    def ver_accesos_recientes(e):
-        """Ver los últimos accesos registrados en tiempo real"""
-        page.clean()
-        
-        titulo_accesos = ft.Text("Accesos Recientes", size=24, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_900)
-        contenedor_accesos = ft.Column([], scroll=ft.ScrollMode.AUTO)
-        btn_refrescar = ft.ElevatedButton("🔄 REFRESCAR", bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, expand=True, height=40)
-        
-        def cargar_accesos():
-            """Carga los accesos recientes desde el API"""
-            try:
-                r = requests.get(f"{API_URL}/accesos-recientes?limite=15")
-                if r.status_code == 200:
-                    accesos = r.json().get("accesos", [])
-                    contenedor_accesos.controls.clear()
-                    
-                    if not accesos:
-                        contenedor_accesos.controls.append(
-                            ft.Text("No hay accesos registrados", size=14, color=ft.Colors.BLUE_GREY_700)
-                        )
-                    else:
-                        for acceso in accesos:
-                            estado = "🔵 ACTIVO" if acceso.get("activo") == 1 else "✅ CERRADO"
-                            color_estado = ft.Colors.BLUE_600 if acceso.get("activo") == 1 else ft.Colors.GREEN_700
-                            
-                            tarjeta = ft.Container(
-                                content=ft.Column([
-                                    ft.Row([
-                                        ft.Text(f"👤 {acceso.get('nombre_usuario')}", weight=ft.FontWeight.BOLD, size=13),
-                                        ft.Text(f"ID: {acceso.get('usuario_id')}", size=11, color=ft.Colors.BLUE_GREY_700),
-                                    ]),
-                                    ft.Row([
-                                        ft.Text(f"🅿️ Espacio: {acceso.get('espacio_asignado')}", size=12, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_900),
-                                        ft.Text(estado, size=11, color=color_estado, weight=ft.FontWeight.BOLD),
-                                    ]),
-                                    ft.Row([
-                                        ft.Text(f"📞 {acceso.get('celular')}", size=10, color=ft.Colors.BLUE_GREY_600),
-                                        ft.Text(f"⏰ {str(acceso.get('fecha_hora_entrada', ''))[:19]}", size=10, color=ft.Colors.BLUE_GREY_600),
-                                    ]),
-                                    ft.Divider(height=1, color=ft.Colors.BLUE_GREY_200),
-                                ], spacing=5),
-                                padding=12,
-                                bgcolor=ft.Colors.BLUE_GREY_50,
-                                border_radius=6,
-                                border=ft.border.all(1, ft.Colors.BLUE_GREY_300),
-                            )
-                            contenedor_accesos.controls.append(tarjeta)
-                    
-                    page.update()
-                else:
-                    contenedor_accesos.controls.clear()
-                    contenedor_accesos.controls.append(
-                        ft.Text(f"Error al cargar: {r.status_code}", color=ft.Colors.RED_700)
-                    )
-                    page.update()
-            except Exception as ex:
-                contenedor_accesos.controls.clear()
-                contenedor_accesos.controls.append(
-                    ft.Text(f"❌ Error: {str(ex)}", color=ft.Colors.RED_700)
-                )
-                page.update()
-        
-        def refrescar_click(e):
-            cargar_accesos()
-        
-        btn_refrescar.on_click = refrescar_click
-        
-        # Cargar accesos al abrir
-        cargar_accesos()
-        
-        # Panel con actualización automática cada 2 segundos
-        panel_accesos = ft.Container(
-            content=ft.Column([
-                titulo_accesos,
-                ft.Divider(height=10, color=ft.Colors.TRANSPARENT),
-                ft.Row([btn_refrescar], alignment=ft.MainAxisAlignment.CENTER),
-                ft.Divider(height=10, color=ft.Colors.TRANSPARENT),
-                ft.Container(
-                    content=contenedor_accesos,
-                    expand=True,
-                    border_radius=6,
-                    border=ft.border.all(1, ft.Colors.BLUE_GREY_300),
-                ),
-                ft.Divider(height=10, color=ft.Colors.TRANSPARENT),
-                ft.ElevatedButton("← VOLVER AL PANEL", on_click=lambda _: vigilante_view(page, API_URL), bgcolor=ft.Colors.BLUE_GREY_700, color=ft.Colors.WHITE, expand=True, height=40),
-            ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, expand=True, scroll=ft.ScrollMode.AUTO),
-            padding=30,
+                ft.Container(resultado, alignment=ft.alignment.center),
+            ], spacing=10, horizontal_alignment=ft.CrossAxisAlignment.CENTER, expand=True, scroll=ft.ScrollMode.AUTO),
+            padding=20,
             expand=True,
             bgcolor=ft.Colors.GREY_200,
             border_radius=6,
             shadow=ft.BoxShadow(blur_radius=10, color=ft.Colors.BLUE_GREY_100),
         )
         
-        page.add(panel_accesos)
+        page.add(panel)
+
+    def ver_accesos_recientes(e):
+        """Ver los últimos accesos registrados en tiempo real"""
+        page.clean()
         
-        # Actualizar cada 3 segundos
-        import threading
-        def auto_refresh():
-            import time
-            while page.overlay or True:
-                time.sleep(3)
-                try:
-                    if page.session.get("actualizar_accesos", True):
-                        cargar_accesos()
-                except:
-                    break
-        
-        threading.Thread(target=auto_refresh, daemon=True).start()
+        try:
+            r = requests.get(f"{API_URL}/accesos-recientes?limite=15")
+            if r.status_code == 200:
+                accesos = r.json().get("accesos", [])
+                
+                if not accesos:
+                    # Si no hay accesos, mostrar mensaje
+                    contenido = ft.Column([
+                        ft.Text("No hay accesos registrados", size=14, color=ft.Colors.BLUE_GREY_700),
+                    ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=20)
+                else:
+                    tarjetas = []
+                    for acceso in accesos:
+                        estado = "ACTIVO" if acceso.get("activo") == 1 else "CERRADO"
+                        color_estado = ft.Colors.BLUE_600 if acceso.get("activo") == 1 else ft.Colors.GREEN_700
+                        
+                        tarjeta = ft.Container(
+                            content=ft.Column([
+                                ft.Row([
+                                    ft.Text(f"{acceso.get('nombre_usuario')}", weight=ft.FontWeight.BOLD, size=13),
+                                    ft.Text(f"ID: {acceso.get('usuario_id')}", size=11, color=ft.Colors.BLUE_GREY_700),
+                                ]),
+                                ft.Row([
+                                    ft.Text(f"Espacio: {acceso.get('espacio_asignado')}", size=12, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_900),
+                                    ft.Text(estado, size=11, color=color_estado, weight=ft.FontWeight.BOLD),
+                                ]),
+                                ft.Row([
+                                    ft.Text(f"{acceso.get('celular')}", size=10, color=ft.Colors.BLUE_GREY_600),
+                                    ft.Text(f"{str(acceso.get('fecha_hora_entrada', ''))[:19]}", size=10, color=ft.Colors.BLUE_GREY_600),
+                                ]),
+                            ], spacing=5),
+                            padding=12,
+                            bgcolor=ft.Colors.BLUE_GREY_50,
+                            border_radius=6,
+                            border=ft.border.all(1, ft.Colors.BLUE_GREY_300),
+                        )
+                        tarjetas.append(tarjeta)
+                    
+                    contenido = ft.Column(tarjetas, scroll="adaptive", spacing=10, horizontal_alignment=ft.CrossAxisAlignment.CENTER)
+                
+                resultado = ft.Text("", size=12, color=ft.Colors.GREEN_700)
+                
+                def refrescar_accesos(_):
+                    ver_accesos_recientes(None)
+                
+                panel = ft.Container(
+                    content=ft.Column([
+                        ft.Row([
+                            ft.ElevatedButton("VOLVER", on_click=lambda _: vigilante_view(page, API_URL), bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, width=100, height=40),
+                            ft.Text("ACCESOS RECIENTES", size=18, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_900, expand=True, text_align=ft.TextAlign.CENTER),
+                            ft.ElevatedButton("REFRESCAR", on_click=refrescar_accesos, bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, width=120, height=40),
+                        ], spacing=10, alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                        ft.Divider(height=15),
+                        contenido,
+                        ft.Divider(height=10),
+                        resultado,
+                    ], spacing=10, horizontal_alignment=ft.CrossAxisAlignment.CENTER, expand=True, scroll=ft.ScrollMode.AUTO),
+                    padding=20,
+                    expand=True,
+                    bgcolor=ft.Colors.GREY_200,
+                    border_radius=6,
+                    shadow=ft.BoxShadow(blur_radius=10, color=ft.Colors.BLUE_GREY_100),
+                )
+                
+                page.add(panel)
+            
+        except Exception as ex:
+            resultado = ft.Text(f"Error: {str(ex)}", size=12, color=ft.Colors.RED_700)
 
     def ver_alertas_sensores(e):
         """Ver alertas no autorizadas"""
@@ -1048,15 +908,15 @@ def vigilante_view(page: ft.Page, API_URL: str):
     logo = ft.Text("SmartPark", size=32, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_900)
 
     botones = [
-        ft.ElevatedButton("👀 VER ACCESOS RECIENTES", on_click=ver_accesos_recientes, bgcolor=ft.Colors.GREEN_900, color=ft.Colors.WHITE, expand=True, height=45),
-        ft.ElevatedButton("⚠️ VER ALERTAS NO AUTORIZADAS", on_click=ver_alertas_sensores, bgcolor=ft.Colors.ORANGE_900, color=ft.Colors.WHITE, expand=True, height=45),
-        ft.ElevatedButton("VER DATOS DE USUARIOS", on_click=ver_datos_usuarios, bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, expand=True, height=45),
-        ft.ElevatedButton("REGISTRAR ENTRADA MANUAL", on_click=lambda e: registrar_acceso_manual("entrada"), bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, expand=True, height=45),
-        ft.ElevatedButton("REGISTRAR SALIDA MANUAL", on_click=lambda e: registrar_acceso_manual("salida"), bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, expand=True, height=45),
-        ft.ElevatedButton("ENVIAR ADVERTENCIA", on_click=enviar_advertencia, bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, expand=True, height=45),
-        ft.ElevatedButton("ENVIAR MULTA", on_click=enviar_multa, bgcolor=ft.Colors.RED_900, color=ft.Colors.WHITE, expand=True, height=45),
-        ft.ElevatedButton("AJUSTES DE APLICACION", on_click=placeholder, bgcolor=ft.Colors.BLUE_GREY_700, color=ft.Colors.WHITE, expand=True, height=45),
-        ft.ElevatedButton("CERRAR APLICACION", on_click=cerrar_aplicacion, bgcolor=ft.Colors.RED_700, color=ft.Colors.WHITE, expand=True, height=45),
+        ft.ElevatedButton("VER ACCESOS RECIENTES", on_click=ver_accesos_recientes, bgcolor=ft.Colors.GREEN_900, color=ft.Colors.WHITE, expand=True, height=45, width=250),
+        ft.ElevatedButton("VER ALERTAS NO AUTORIZADAS", on_click=ver_alertas_sensores, bgcolor=ft.Colors.ORANGE_900, color=ft.Colors.WHITE, expand=True, height=45, width=250),
+        ft.ElevatedButton("VER DATOS DE USUARIOS", on_click=ver_datos_usuarios, bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, expand=True, height=45, width=250),
+        ft.ElevatedButton("REGISTRAR ENTRADA MANUAL", on_click=lambda e: registrar_acceso_manual("entrada"), bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, expand=True, height=45, width=250),
+        ft.ElevatedButton("REGISTRAR SALIDA MANUAL", on_click=lambda e: registrar_acceso_manual("salida"), bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, expand=True, height=45, width=250),
+        ft.ElevatedButton("ENVIAR ADVERTENCIA", on_click=enviar_advertencia, bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, expand=True, height=45, width=250),
+        ft.ElevatedButton("ENVIAR MULTA", on_click=enviar_multa, bgcolor=ft.Colors.RED_900, color=ft.Colors.WHITE, expand=True, height=45, width=250),
+        ft.ElevatedButton("AJUSTES DE APLICACION", on_click=placeholder, bgcolor=ft.Colors.BLUE_GREY_700, color=ft.Colors.WHITE, expand=True, height=45, width=250),
+        ft.ElevatedButton("CERRAR APLICACION", on_click=cerrar_aplicacion, bgcolor=ft.Colors.RED_700, color=ft.Colors.WHITE, expand=True, height=45, width=250),
     ]
 
     panel = ft.Container(

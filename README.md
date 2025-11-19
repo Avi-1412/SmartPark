@@ -426,12 +426,14 @@ VELOCIDAD_BAUD = 9600
 | **Multas** | ✅ | Generación automática tras 3 advertencias |
 | **Base de Datos** | ✅ | SQLite con 7 tablas normalizadas |
 | **API Endpoints** | ✅ | 20+ endpoints REST documentados |
+| **Servo Motor** | ✅ | Abre automático en entrada/salida válida |
+| **2x RC522 (RFID)** | ✅ | Entrada y Salida en mismo Arduino |
+| **4x Sensores IR** | ✅ | Detección de ocupación en tiempo real |
 
 ### PENDIENTE
 
 | Funcionalidad | Requisito | Prioridad |
 |---------------|-----------|-----------|
-| **Servomotor/Pluma** | Módulo relay 2 canales | ALTA |
 | **Notificaciones Real-Time** | WebSocket o polling optimizado | MEDIA |
 | **Boleto Digital** | Frontend usuario_page | MEDIA |
 

@@ -191,7 +191,96 @@ def admin_view(page: ft.Page, API_URL: str):
                 dialogo_confirmar.open = True
                 page.update()
 
-            # Agregar filas a la tabla
+            def registrar_auto(ev, usuario):
+                """Registrar un nuevo auto para el usuario"""
+                placa_input = ft.TextField(label="Placa *", width=250)
+                marca_input = ft.TextField(label="Marca *", width=250)
+                modelo_input = ft.TextField(label="Modelo *", width=250)
+                mensaje_auto = ft.Text("", size=12, color=ft.Colors.RED_700)
+
+                def guardar_auto(_):
+                    # Validación
+                    if not placa_input.value.strip():
+                        mensaje_auto.value = "❌ La placa es obligatoria"
+                        mensaje_auto.color = ft.Colors.RED_700
+                        page.update()
+                        return
+                    
+                    if not marca_input.value.strip():
+                        mensaje_auto.value = "❌ La marca es obligatoria"
+                        mensaje_auto.color = ft.Colors.RED_700
+                        page.update()
+                        return
+                    
+                    if not modelo_input.value.strip():
+                        mensaje_auto.value = "❌ El modelo es obligatorio"
+                        mensaje_auto.color = ft.Colors.RED_700
+                        page.update()
+                        return
+                    
+                    try:
+                        mensaje_auto.value = "⏳ Registrando auto..."
+                        mensaje_auto.color = ft.Colors.BLUE_700
+                        page.update()
+                        
+                        data = {
+                            "usuario_id": usuario['id'],
+                            "placa": placa_input.value.strip().upper(),
+                            "marca": marca_input.value.strip(),
+                            "modelo": modelo_input.value.strip(),
+                        }
+                        
+                        r = requests.post(f"{API_URL}/autos", json=data)
+                        resultado = r.json()
+                        
+                        if "error" in resultado:
+                            mensaje_auto.value = f"❌ {resultado['error']}"
+                            mensaje_auto.color = ft.Colors.RED_700
+                        else:
+                            mensaje_auto.value = "✅ Auto registrado correctamente"
+                            mensaje_auto.color = ft.Colors.GREEN_700
+                            page.update()
+                            
+                            import time
+                            time.sleep(1.5)
+                            dialogo_auto.open = False
+                            page.update()
+                            ver_datos(None)  # recarga la tabla
+                            return
+                    except Exception as ex:
+                        mensaje_auto.value = f"❌ Error: {str(ex)}"
+                        mensaje_auto.color = ft.Colors.RED_700
+                    
+                    page.update()
+
+                dialogo_auto = ft.AlertDialog(
+                    modal=True,
+                    title=ft.Text(f"Registrar Auto - Usuario {usuario['id']} ({usuario.get('nombre', '')})"),
+                    content=ft.Column([
+                        ft.Text("* Campos obligatorios", size=11, color=ft.Colors.ORANGE_700),
+                        ft.Divider(height=5),
+                        placa_input,
+                        marca_input,
+                        modelo_input,
+                        ft.Divider(height=10),
+                        mensaje_auto,
+                    ], scroll=ft.ScrollMode.AUTO, tight=True),
+                    actions=[
+                        ft.TextButton("Registrar", on_click=guardar_auto),
+                        ft.TextButton("Cancelar", on_click=lambda _: cerrar_dialogo_auto()),
+                    ],
+                    actions_alignment=ft.MainAxisAlignment.END,
+                )
+
+                def cerrar_dialogo_auto():
+                    dialogo_auto.open = False
+                    page.update()
+
+                if dialogo_auto not in page.overlay:
+                    page.overlay.append(dialogo_auto)
+
+                dialogo_auto.open = True
+                page.update()
             for u in usuarios:
                 autos = u.get("autos", [])
                 
@@ -218,6 +307,15 @@ def admin_view(page: ft.Page, API_URL: str):
                                                 color=ft.Colors.WHITE,
                                                 width=80,
                                                 height=35
+                                            ),
+                                            ft.ElevatedButton(
+                                                "Auto+",
+                                                on_click=lambda ev, user=u: registrar_auto(ev, user),
+                                                bgcolor=ft.Colors.GREEN_700,
+                                                color=ft.Colors.WHITE,
+                                                width=70,
+                                                height=35,
+                                                tooltip="Registrar nuevo auto"
                                             ),
                                             ft.IconButton(
                                                 ft.Icons.DELETE,
@@ -252,6 +350,15 @@ def admin_view(page: ft.Page, API_URL: str):
                                             width=80,
                                             height=35
                                         ),
+                                        ft.ElevatedButton(
+                                            "Auto+",
+                                            on_click=lambda ev, user=u: registrar_auto(ev, user),
+                                            bgcolor=ft.Colors.GREEN_700,
+                                            color=ft.Colors.WHITE,
+                                            width=70,
+                                            height=35,
+                                            tooltip="Registrar nuevo auto"
+                                        ),
                                         ft.IconButton(
                                             ft.Icons.DELETE,
                                             icon_color=ft.Colors.RED_700,
@@ -267,28 +374,24 @@ def admin_view(page: ft.Page, API_URL: str):
             # Mostrar la tabla
             page.clean()
             
-            boton_volver = ft.ElevatedButton(
-                "← Volver al Menú",
-                on_click=lambda _: admin_view(page, API_URL),
-                bgcolor=ft.Colors.BLUE_GREY_700,
-                color=ft.Colors.WHITE,
-                width=260,
-                height=40
+            panel = ft.Container(
+                content=ft.Column([
+                    ft.Row([
+                        ft.ElevatedButton("VOLVER", on_click=lambda _: admin_view(page, API_URL), 
+                                         bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, width=100, height=40),
+                        ft.Text("VER/MODIFICAR USUARIOS", size=18, weight=ft.FontWeight.BOLD, 
+                               color=ft.Colors.BLUE_900, expand=True, text_align=ft.TextAlign.CENTER),
+                        ft.Container(width=100),
+                    ], spacing=10, alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                    ft.Divider(height=15),
+                    ft.Container(content=tabla, expand=True),
+                    ft.Container(salida, expand=True),
+                ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=15, 
+                   expand=True, scroll=ft.ScrollMode.AUTO),
+                padding=20, expand=True, bgcolor=ft.Colors.GREY_200,
+                border_radius=6, shadow=ft.BoxShadow(blur_radius=10, color=ft.Colors.BLUE_GREY_100),
             )
-            
-            page.add(
-                ft.Column([
-                    ft.Text("Ver/Modificar Datos de Usuarios", size=20, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE_900),
-                    ft.Divider(height=10),
-                    tabla,
-                    ft.Divider(height=20),
-                    boton_volver,
-                    ft.Divider(height=10),
-                    salida
-                ],
-                scroll=ft.ScrollMode.AUTO,
-                )
-            )
+            page.add(panel)
 
         except Exception as ex:
             salida.value = f"❌ Error al obtener datos: {ex}"
@@ -410,7 +513,9 @@ def admin_view(page: ft.Page, API_URL: str):
         page.update()
 
     def registrar_usuario(e):
-        # Campos del formulario
+        page.clean()
+        
+        # Campos del formulario (consistentes con los datos de usuarios)
         tipo_usuario = ft.Dropdown(
             label="Tipo de usuario *",
             options=[
@@ -418,28 +523,23 @@ def admin_view(page: ft.Page, API_URL: str):
                 ft.dropdown.Option("2", "Administrativo"),
                 ft.dropdown.Option("3", "Externo"),
             ],
-            width=250,
+            width=300,
         )
-        matricula = ft.TextField(label="Matrícula (números, si aplica)", width=250)
-        nombre = ft.TextField(label="Nombre completo *", width=250)
-        vigencia = ft.TextField(label="Vigencia (YYYY-MM-DD)", width=250, value="2025-12-31")
+        nombre = ft.TextField(label="Nombre completo *", width=300)
+        matricula = ft.TextField(label="Matrícula (números, si aplica)", width=300)
+        celular = ft.TextField(label="Celular *", width=300)
+        vigencia = ft.TextField(label="Vigencia (YYYY-MM-DD) *", width=300, value="2025-12-31")
         pago = ft.Dropdown(
-            label="Pago",
+            label="Estado de Pago (puede modificarse después) *",
             options=[
-                ft.dropdown.Option("1", "Sí"),
-                ft.dropdown.Option("0", "No"),
+                ft.dropdown.Option("1", "Pagado"),
+                ft.dropdown.Option("0", "No Pagado"),
             ],
-            width=250,
+            width=300,
             value="1"
         )
-        telefono = ft.TextField(label="Teléfono (formato: +5551234567)", width=250)
         
-        mensaje_dialogo = ft.Text("", size=12, color=ft.Colors.RED_700)
-
-        # Función para cerrar el diálogo
-        def cerrar_dialogo(ev=None):
-            dialog.open = False
-            page.update()
+        mensaje_registro = ft.Text("", size=12, color=ft.Colors.RED_700)
 
         # Función para validar fecha
         def validar_fecha(fecha_str):
@@ -460,144 +560,161 @@ def admin_view(page: ft.Page, API_URL: str):
             except:
                 return False
 
-        # Función para validar teléfono
-        def validar_telefono(tel):
-            """Valida que el teléfono sea números (al menos 7 dígitos)"""
+        # Función para validar celular
+        def validar_celular(tel):
+            """Valida que el celular sea números (al menos 7 dígitos)"""
             if not tel.strip():
-                return True  # Opcional
+                return False  # Obligatorio
             return tel.replace("+", "").replace(" ", "").replace("-", "").isdigit() and len(tel.replace("+", "").replace(" ", "").replace("-", "")) >= 7
 
         # Función para enviar los datos
-        def enviar_datos(ev):
+        def enviar_datos(_):
             # Validación básica
             if not tipo_usuario.value:
-                mensaje_dialogo.value = "❌ Selecciona un tipo de usuario"
-                mensaje_dialogo.color = ft.Colors.RED_700
+                mensaje_registro.value = "❌ Selecciona un tipo de usuario"
+                mensaje_registro.color = ft.Colors.RED_700
                 page.update()
                 return
             
             if not nombre.value.strip():
-                mensaje_dialogo.value = "❌ El nombre no puede estar vacío"
-                mensaje_dialogo.color = ft.Colors.RED_700
+                mensaje_registro.value = "❌ El nombre no puede estar vacío"
+                mensaje_registro.color = ft.Colors.RED_700
+                page.update()
+                return
+            
+            if not celular.value.strip():
+                mensaje_registro.value = "❌ El celular es obligatorio"
+                mensaje_registro.color = ft.Colors.RED_700
+                page.update()
+                return
+            
+            # Validar celular
+            if not validar_celular(celular.value.strip()):
+                mensaje_registro.value = "❌ Celular inválido (mínimo 7 dígitos)"
+                mensaje_registro.color = ft.Colors.RED_700
+                page.update()
+                return
+            
+            # Validar vigencia
+            if not validar_fecha(vigencia.value.strip()):
+                mensaje_registro.value = "❌ Vigencia: usa formato YYYY-MM-DD (ej: 2025-12-31)"
+                mensaje_registro.color = ft.Colors.RED_700
                 page.update()
                 return
             
             # Validar matrícula si se proporciona
             if matricula.value.strip() and not matricula.value.strip().isdigit():
-                mensaje_dialogo.value = "❌ La matrícula debe contener solo números"
-                mensaje_dialogo.color = ft.Colors.RED_700
-                page.update()
-                return
-            
-            # Validar vigencia
-            if vigencia.value.strip() and not validar_fecha(vigencia.value.strip()):
-                mensaje_dialogo.value = "❌ Vigencia: usa formato YYYY-MM-DD (ej: 2025-12-31)"
-                mensaje_dialogo.color = ft.Colors.RED_700
-                page.update()
-                return
-            
-            # Validar teléfono
-            if telefono.value.strip() and not validar_telefono(telefono.value.strip()):
-                mensaje_dialogo.value = "❌ Teléfono inválido (mínimo 7 dígitos)"
-                mensaje_dialogo.color = ft.Colors.RED_700
+                mensaje_registro.value = "❌ La matrícula debe contener solo números"
+                mensaje_registro.color = ft.Colors.RED_700
                 page.update()
                 return
             
             try:
-                mensaje_dialogo.value = "⏳ Registrando usuario..."
-                mensaje_dialogo.color = ft.Colors.BLUE_700
+                mensaje_registro.value = "⏳ Registrando usuario..."
+                mensaje_registro.color = ft.Colors.BLUE_700
+                btn_registrar.disabled = True
                 page.update()
                 
                 data = {
                     "tipo_id": tipo_usuario.value,
-                    "tipo": tipo_usuario.options[int(tipo_usuario.value) - 1].text,
-                    "matricula": matricula.value.strip() or "N/A",
                     "nombre": nombre.value.strip(),
-                    "vigencia": vigencia.value.strip() or "2025-12-31",
+                    "matricula": matricula.value.strip() or "N/A",
+                    "celular": celular.value.strip(),
+                    "vigencia": vigencia.value.strip(),
                     "pago": int(pago.value or 0),
-                    "telefono": telefono.value.strip() or "N/A",
                 }
                 r = requests.post(f"{API_URL}/usuarios", json=data)
                 resultado = r.json()
                 
                 if "error" in resultado:
-                    mensaje_dialogo.value = f"❌ {resultado['error']}"
-                    mensaje_dialogo.color = ft.Colors.RED_700
-                elif "mensaje" in resultado:
+                    mensaje_registro.value = f"❌ {resultado['error']}"
+                    mensaje_registro.color = ft.Colors.RED_700
+                    btn_registrar.disabled = False
+                elif "mensaje" in resultado or "idUsuario" in resultado:
                     # Usuario registrado con éxito, obtener ID del usuario
                     usuario_id = resultado.get("idUsuario")
-                    mensaje_dialogo.value = f"✅ {resultado['mensaje']}"
-                    mensaje_dialogo.color = ft.Colors.GREEN_700
+                    mensaje_registro.value = f"✅ Usuario registrado correctamente"
+                    mensaje_registro.color = ft.Colors.GREEN_700
+                    btn_registrar.disabled = True
                     page.update()
                     
                     import time
-                    time.sleep(1)
-                    dialog.open = False
-                    page.update()
+                    time.sleep(2)
                     
-                    # Mostrar diálogo para crear credenciales
-                    crear_credenciales_para_usuario(usuario_id, nombre.value.strip(), tipo_usuario.value)
-                    return
-                else:
-                    # Obtener ID si existe en resultado
-                    usuario_id = resultado.get("idUsuario")
-                    mensaje_dialogo.value = "✅ Usuario registrado correctamente"
-                    mensaje_dialogo.color = ft.Colors.GREEN_700
-                    page.update()
-                    
-                    import time
-                    time.sleep(1)
-                    dialog.open = False
+                    # Limpiar los campos del formulario
+                    tipo_usuario.value = None
+                    nombre.value = ""
+                    matricula.value = ""
+                    celular.value = ""
+                    vigencia.value = "2025-12-31"
+                    pago.value = "1"
+                    mensaje_registro.value = ""
+                    btn_registrar.disabled = False
                     page.update()
                     
                     # Mostrar diálogo para crear credenciales si tenemos el ID
                     if usuario_id:
                         crear_credenciales_para_usuario(usuario_id, nombre.value.strip(), tipo_usuario.value)
+                    else:
+                        # Si no tenemos ID, volver al menú admin
+                        admin_view(page, API_URL)
                     return
+                else:
+                    mensaje_registro.value = "❌ Error al registrar usuario"
+                    mensaje_registro.color = ft.Colors.RED_700
+                    btn_registrar.disabled = False
+                    
             except Exception as ex:
-                mensaje_dialogo.value = f"❌ Error: {str(ex)}"
-                mensaje_dialogo.color = ft.Colors.RED_700
+                mensaje_registro.value = f"❌ Error: {str(ex)}"
+                mensaje_registro.color = ft.Colors.RED_700
+                btn_registrar.disabled = False
             
             page.update()
 
-        # Crear el diálogo con scroll
-        dialog = ft.AlertDialog(
-            modal=True,
-            title=ft.Text("Registrar nuevo usuario"),
-            content=ft.Column(
-                [
-                    ft.Text("* Campos obligatorios", size=11, color=ft.Colors.ORANGE_700),
-                    ft.Divider(height=5),
-                    tipo_usuario, 
-                    nombre,
-                    matricula, 
-                    vigencia, 
-                    pago, 
-                    telefono,
-                    ft.Divider(height=10), 
-                    mensaje_dialogo
-                ],
-                scroll=ft.ScrollMode.AUTO,
-                tight=True,
-            ),
-            actions=[
-                ft.TextButton("Registrar", on_click=enviar_datos),
-                ft.TextButton("Cancelar", on_click=cerrar_dialogo),
-            ],
-            actions_alignment=ft.MainAxisAlignment.END,
+        btn_registrar = ft.ElevatedButton(
+            "REGISTRAR USUARIO",
+            on_click=enviar_datos,
+            disabled=False,
+            height=45,
+            width=300,
+            bgcolor=ft.Colors.BLUE_900,
+            color=ft.Colors.WHITE
         )
-
-        # 🔧 Solución para modo app local (Flet 0.28.3)
-        if dialog not in page.overlay:
-            page.overlay.append(dialog)
-
-        dialog.open = True
-        page.update()
+        
+        panel = ft.Container(
+            content=ft.Column([
+                ft.Row([
+                    ft.ElevatedButton("VOLVER", on_click=lambda _: admin_view(page, API_URL), 
+                                     bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, width=100, height=40),
+                    ft.Text("REGISTRAR NUEVO USUARIO", size=18, weight=ft.FontWeight.BOLD, 
+                           color=ft.Colors.BLUE_900, expand=True, text_align=ft.TextAlign.CENTER),
+                    ft.Container(width=100),
+                ], spacing=10, alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                ft.Divider(height=15),
+                ft.Column([
+                    ft.Text("* Campos obligatorios", size=11, color=ft.Colors.ORANGE_700),
+                    ft.Divider(height=10),
+                    tipo_usuario,
+                    nombre,
+                    celular,
+                    matricula,
+                    vigencia,
+                    pago,
+                    ft.Divider(height=10),
+                    ft.Container(btn_registrar, alignment=ft.alignment.center),
+                    ft.Divider(height=10),
+                    mensaje_registro,
+                ], spacing=8, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+            ], spacing=10, horizontal_alignment=ft.CrossAxisAlignment.CENTER, 
+               expand=True, scroll=ft.ScrollMode.AUTO),
+            padding=20, expand=True, bgcolor=ft.Colors.GREY_200,
+            border_radius=6, shadow=ft.BoxShadow(blur_radius=10, color=ft.Colors.BLUE_GREY_100),
+        )
+        page.add(panel)
 
     def ver_reportes(e):
         """Muestra advertencias y multas del sistema"""
-        salida.value = ""
-        page.update()
+        page.clean()
 
         try:
             # Obtener todas las multas
@@ -605,8 +722,25 @@ def admin_view(page: ft.Page, API_URL: str):
             multas_data = r.json().get("multas", [])
             
             if not multas_data:
-                salida.value = "No hay multas registradas."
-                page.update()
+                page.clean()
+                panel = ft.Container(
+                    content=ft.Column([
+                        ft.Row([
+                            ft.ElevatedButton("VOLVER", on_click=lambda _: admin_view(page, API_URL), 
+                                             bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, width=100, height=40),
+                            ft.Text("REPORTES DE MULTAS", size=18, weight=ft.FontWeight.BOLD, 
+                                   color=ft.Colors.BLUE_900, expand=True, text_align=ft.TextAlign.CENTER),
+                            ft.Container(width=100),
+                        ], spacing=10, alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                        ft.Divider(height=15),
+                        ft.Column([
+                            ft.Text("No hay multas registradas", size=14, color=ft.Colors.BLUE_GREY_700),
+                        ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=10),
+                    ], spacing=10, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+                    padding=20, expand=True, bgcolor=ft.Colors.GREY_200,
+                    border_radius=6, shadow=ft.BoxShadow(blur_radius=10, color=ft.Colors.BLUE_GREY_100),
+                )
+                page.add(panel)
                 return
             
             # Crear tabla de multas
@@ -637,22 +771,52 @@ def admin_view(page: ft.Page, API_URL: str):
                     )
                 )
             
-            salida.value = ft.Column([
-                ft.Text("REPORTES - MULTAS DEL SISTEMA", size=14, weight=ft.FontWeight.BOLD),
-                tabla
-            ], scroll=ft.ScrollMode.AUTO)
-            page.update()
+            panel = ft.Container(
+                content=ft.Column([
+                    ft.Row([
+                        ft.ElevatedButton("VOLVER", on_click=lambda _: admin_view(page, API_URL), 
+                                         bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, width=100, height=40),
+                        ft.Text("REPORTES DE MULTAS", size=18, weight=ft.FontWeight.BOLD, 
+                               color=ft.Colors.BLUE_900, expand=True, text_align=ft.TextAlign.CENTER),
+                        ft.Container(width=100),
+                    ], spacing=10, alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                    ft.Divider(height=15),
+                    ft.Container(content=tabla, expand=True),
+                ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=15, 
+                   expand=True, scroll=ft.ScrollMode.AUTO),
+                padding=20, expand=True, bgcolor=ft.Colors.GREY_200,
+                border_radius=6, shadow=ft.BoxShadow(blur_radius=10, color=ft.Colors.BLUE_GREY_100),
+            )
+            page.add(panel)
             
         except Exception as ex:
-            salida.value = f"Error: {ex}"
-            page.update()
+            page.clean()
+            panel = ft.Container(
+                content=ft.Column([
+                    ft.Row([
+                        ft.ElevatedButton("VOLVER", on_click=lambda _: admin_view(page, API_URL), 
+                                         bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, width=100, height=40),
+                        ft.Text("REPORTES DE MULTAS", size=18, weight=ft.FontWeight.BOLD, 
+                               color=ft.Colors.BLUE_900, expand=True, text_align=ft.TextAlign.CENTER),
+                        ft.Container(width=100),
+                    ], spacing=10, alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                    ft.Divider(height=15),
+                    ft.Column([
+                        ft.Text("Error", size=16, weight=ft.FontWeight.BOLD, color=ft.Colors.RED_700),
+                        ft.Text(f"❌ {ex}", size=13, color=ft.Colors.RED_600),
+                    ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=10),
+                ], spacing=10, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+                padding=20, expand=True, bgcolor=ft.Colors.GREY_200,
+                border_radius=6, shadow=ft.BoxShadow(blur_radius=10, color=ft.Colors.BLUE_GREY_100),
+            )
+            page.add(panel)
 
     botones = [
-        ft.ElevatedButton("VER/MODIFICAR DATOS DE USUARIO", on_click=ver_datos, bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, width=260, height=45),
-        ft.ElevatedButton("REGISTRAR USUARIOS", on_click=registrar_usuario, bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, width=260, height=45),
-        ft.ElevatedButton("VER REPORTES", on_click=ver_reportes, bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, width=260, height=45),
-        ft.ElevatedButton("AJUSTES DE APLICACION", on_click=placeholder, bgcolor=ft.Colors.BLUE_GREY_700, color=ft.Colors.WHITE, width=260, height=45),
-        ft.ElevatedButton("CERRAR APLICACION", on_click=cerrar_aplicacion, bgcolor=ft.Colors.RED_700, color=ft.Colors.WHITE, width=260, height=45),
+        ft.ElevatedButton("VER/MODIFICAR DATOS DE USUARIO", on_click=ver_datos, bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, expand=True, height=45, width=250),
+        ft.ElevatedButton("REGISTRAR USUARIOS", on_click=registrar_usuario, bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, expand=True, height=45, width=250),
+        ft.ElevatedButton("VER REPORTES", on_click=ver_reportes, bgcolor=ft.Colors.BLUE_900, color=ft.Colors.WHITE, expand=True, height=45, width=250),
+        ft.ElevatedButton("AJUSTES DE APLICACION", on_click=placeholder, bgcolor=ft.Colors.BLUE_GREY_700, color=ft.Colors.WHITE, expand=True, height=45, width=250),
+        ft.ElevatedButton("CERRAR APLICACION", on_click=cerrar_aplicacion, bgcolor=ft.Colors.RED_700, color=ft.Colors.WHITE, expand=True, height=45, width=250),
     ]
 
     panel = ft.Container(
